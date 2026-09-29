@@ -1,0 +1,190 @@
+.registry-page {
+  padding: 2rem;
+  height: 100%;
+  overflow-y: auto;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+}
+
+.registry-toast {
+  margin-bottom: 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.registry-toast.ok {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.registry-toast.error {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.registry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
+.registry-card {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  padding: 1.5rem;
+}
+
+.registry-card h3 {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+}
+
+.registry-card-wide {
+  grid-column: span 2;
+}
+
+.registry-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.registry-card-header h3 {
+  margin: 0;
+}
+
+.btn-icon-refresh {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 0.4rem;
+  padding: 0.4rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn-icon-refresh:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.registry-mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1.25rem;
+  font-size: 0.8rem;
+}
+
+.registry-mini-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.registry-mini-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.btn-action {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 7px;
+  margin-right: 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+
+.btn-action.edit {
+  color: #fbbf24;
+  background-color: rgba(251, 191, 36, 0.12);
+}
+
+.btn-action.delete {
+  color: #f87171;
+  background-color: rgba(248, 113, 113, 0.12);
+}
+
+.registry-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.registry-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.registry-form input,
+.registry-form select {
+  background-color: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.55rem 0.65rem;
+  color: var(--text-main);
+  font-size: 0.85rem;
+}
+
+.registry-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.registry-count {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 0.75rem;
+}
+
+.registry-mini-table-wrapper {
+  overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .registry-page {
+    padding: 1rem;
+  }
+
+  .registry-card-wide {
+    grid-column: span 1;
+  }
+
+  .registry-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .registry-mini-table {
+    min-width: 480px;
+  }
+}
+
+.registry-help {
+  margin: -0.4rem 0 1rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.registry-form select:disabled, .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }

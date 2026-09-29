@@ -1,0 +1,233 @@
+.trace-workspace {
+  position: relative;
+  overflow: auto;
+}
+
+.trace-workspace:has(.trace-panel) {
+  align-items: stretch;
+  justify-content: stretch;
+  display: block;
+}
+
+.trace-panel {
+  padding: 1.5rem;
+  width: 100%;
+  color: var(--text-main);
+}
+
+.trace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.trace-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.box-editor-type {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-secondary:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.trace-form {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.trace-form select {
+  flex: 1;
+  background-color: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.55rem 0.7rem;
+  color: var(--text-main);
+  font-size: 0.85rem;
+}
+
+.trace-error {
+  color: #f87171;
+  margin-bottom: 1rem;
+}
+
+.trace-result {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.trace-summary {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.trace-summary strong {
+  color: var(--text-main);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.trace-steps {
+  list-style: decimal;
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.trace-steps li {
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.trace-arrow {
+  color: var(--primary);
+}
+
+.trace-steps em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-size: 0.75rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 1rem;
+}
+
+.modal-card {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  width: min(420px, 100%);
+  max-height: 80vh;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.modal-search {
+  background-color: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  color: var(--text-main);
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.modal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.modal-list li {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+}
+
+.modal-list li:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+@media (max-width: 640px) {
+  .modal-card {
+    width: min(420px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+  }
+
+  .trace-panel {
+    padding: 1rem;
+  }
+
+  .trace-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .trace-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .trace-steps li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+}
+
+.trace-register { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1rem; }
+.trace-register .btn-primary { padding: 0.55rem 0.9rem; font-size: 0.85rem; }
+.trace-register .muted { flex: 1 1 16rem; }

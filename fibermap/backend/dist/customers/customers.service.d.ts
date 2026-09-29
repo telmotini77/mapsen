@@ -1,0 +1,177 @@
+import { PrismaService } from '../prisma/prisma.service.js';
+import { CreateCustomerDto } from './dto/create-customer.dto.js';
+import { UpdateCustomerDto } from './dto/update-customer.dto.js';
+import { CheckViabilityDto } from './dto/check-viability.dto.js';
+export declare class CustomersService {
+    private prisma;
+    constructor(prisma: PrismaService);
+    private resolveProjectId;
+    private findNearestBox;
+    checkViability(dto: CheckViabilityDto): Promise<{
+        viable: boolean;
+        reason: string;
+        nearestBox: null;
+        distanceMeters: null;
+        portsAvailable: null;
+        maxDistanceMeters?: undefined;
+        withinRange?: undefined;
+    } | {
+        viable: boolean;
+        distanceMeters: number;
+        maxDistanceMeters: number;
+        withinRange: boolean;
+        portsAvailable: number;
+        reason: string | null;
+        nearestBox: {
+            id: string;
+            code: string;
+            name: string | null;
+            latitude: number;
+            longitude: number;
+        };
+    }>;
+    create(dto: CreateCustomerDto): Promise<{
+        viability: {
+            viable: boolean;
+            reason: string;
+            nearestBox: null;
+            distanceMeters: null;
+            portsAvailable: null;
+            maxDistanceMeters?: undefined;
+            withinRange?: undefined;
+        } | {
+            viable: boolean;
+            distanceMeters: number;
+            maxDistanceMeters: number;
+            withinRange: boolean;
+            portsAvailable: number;
+            reason: string | null;
+            nearestBox: {
+                id: string;
+                code: string;
+                name: string | null;
+                latitude: number;
+                longitude: number;
+            };
+        };
+        code: string | null;
+        name: string;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        notes: string | null;
+        projectId: string;
+        email: string | null;
+        documentId: string | null;
+        phone: string | null;
+        address: string | null;
+        distanceToBoxMeters: import("@prisma/client/runtime/library").Decimal | null;
+        nearestBoxId: string | null;
+    }>;
+    findAll(query?: {
+        projectId?: string;
+        status?: string;
+        search?: string;
+    }): import(".prisma/client").Prisma.PrismaPromise<{
+        code: string | null;
+        name: string;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        notes: string | null;
+        projectId: string;
+        email: string | null;
+        documentId: string | null;
+        phone: string | null;
+        address: string | null;
+        distanceToBoxMeters: import("@prisma/client/runtime/library").Decimal | null;
+        nearestBoxId: string | null;
+    }[]>;
+    findOne(id: string): Promise<{
+        nearestBox: {
+            code: string;
+            name: string | null;
+            description: string | null;
+            status: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            deletedAt: Date | null;
+            latitude: import("@prisma/client/runtime/library").Decimal;
+            longitude: import("@prisma/client/runtime/library").Decimal;
+            projectId: string;
+            type: string;
+            manufacturerId: string | null;
+            installationType: string | null;
+            capacity: number | null;
+            mangaType: string | null;
+            portCapacity: number;
+            usedPorts: number;
+            equipmentModelId: string | null;
+        } | null;
+    } & {
+        code: string | null;
+        name: string;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        notes: string | null;
+        projectId: string;
+        email: string | null;
+        documentId: string | null;
+        phone: string | null;
+        address: string | null;
+        distanceToBoxMeters: import("@prisma/client/runtime/library").Decimal | null;
+        nearestBoxId: string | null;
+    }>;
+    update(id: string, dto: UpdateCustomerDto): Promise<{
+        code: string | null;
+        name: string;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        notes: string | null;
+        projectId: string;
+        email: string | null;
+        documentId: string | null;
+        phone: string | null;
+        address: string | null;
+        distanceToBoxMeters: import("@prisma/client/runtime/library").Decimal | null;
+        nearestBoxId: string | null;
+    }>;
+    remove(id: string): Promise<{
+        code: string | null;
+        name: string;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        notes: string | null;
+        projectId: string;
+        email: string | null;
+        documentId: string | null;
+        phone: string | null;
+        address: string | null;
+        distanceToBoxMeters: import("@prisma/client/runtime/library").Decimal | null;
+        nearestBoxId: string | null;
+    }>;
+}

@@ -1,0 +1,55 @@
+.odf-table-backdrop { position: fixed; z-index: 100; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgb(2 6 23 / .7); }
+.odf-table-modal { box-sizing: border-box; display: flex; flex-direction: column; width: min(720px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow: hidden; color: #e2e8f0; background: #172338; border: 1px solid #334155; border-radius: .9rem; box-shadow: 0 22px 65px rgb(0 0 0 / .5); }
+.odf-table-header { display: flex; justify-content: space-between; gap: 1rem; padding: 1.15rem 1.25rem; border-bottom: 1px solid #334155; }
+.odf-table-header p { margin: 0; color: #60a5fa; font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.odf-table-header h2 { margin: .15rem 0; color: #f8fafc; font-size: 1.1rem; }
+.odf-table-header span { color: #94a3b8; font-size: .8rem; }
+.odf-table-body { overflow-y: auto; padding: 1rem 1.25rem 1.25rem; }
+.odf-table-cable + .odf-table-cable { margin-top: 1.4rem; }
+.odf-table-cable h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .75rem; margin: 0 0 .6rem; color: #f8fafc; font-size: .95rem; }
+.odf-table-cable h3 small { color: #94a3b8; font-size: .76rem; font-weight: 500; }
+.odf-table-empty { margin: 0; padding: .9rem; color: #cbd5e1; background: #1e293b; border-radius: .55rem; font-size: .84rem; }
+
+/* Hoja de conexiones en dos partes, como en el Excel: fibras (izquierda) y dispositivo (derecha). */
+.odf-table-modal.connections-sheet-modal { width: min(1280px, calc(100vw - 2rem)); }
+.connections-sheet { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.connections-sheet-side { min-width: 0; }
+.connections-sheet-device { position: sticky; top: 0; }
+.connections-sheet-title { margin: 0 0 .7rem; padding-bottom: .4rem; color: #93c5fd; border-bottom: 1px solid #334155; font-size: .8rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.connections-sheet-hint { margin: .6rem 0 0; color: #94a3b8; font-size: .76rem; }
+.device-table-group th { padding: .4rem .6rem; color: #0f172a; background: #bfdbfe; text-align: left; font-size: .74rem; letter-spacing: .04em; text-transform: none; }
+.fiber-table td.device-table-port { width: auto; padding: .35rem .6rem; white-space: nowrap; text-align: left; }
+.fiber-table td.device-table-fibers { padding: .3rem .45rem; background: #f8fafc; }
+.device-table-chip { display: inline-block; margin: .1rem; padding: .15rem .5rem; border-radius: .3rem; font-weight: 800; white-space: nowrap; }
+.device-table-free { color: #64748b; font-weight: 500; }
+.fiber-table td.device-table-peers { padding: .3rem .5rem; color: #0f172a; background: #f1f5f9; font-size: .76rem; }
+.connections-sheet-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin-bottom: 1rem; padding: .6rem .85rem; color: #cbd5e1; background: #1e293b; border: 1px solid #334155; border-radius: .55rem; font-size: .84rem; }
+.connections-sheet-bar.is-picking { color: #f8fafc; background: #1e3a8a; border-color: #3b82f6; }
+.connections-sheet-bar .btn-secondary { padding: .3rem .7rem; font-size: .78rem; }
+.device-table-pickable { cursor: pointer; }
+.device-table-pickable:hover td { box-shadow: inset 0 0 0 2px #3b82f6; }
+.device-table-pick { width: 100%; padding: 0; color: inherit; background: transparent; border: 0; font: inherit; font-weight: 800; text-align: left; cursor: pointer; }
+.device-table-pick:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
+.device-table-chip { display: inline-flex; align-items: center; gap: .3rem; }
+.device-table-unlink { display: inline-flex; padding: .05rem; color: inherit; background: rgb(0 0 0 / .18); border: 0; border-radius: .2rem; cursor: pointer; }
+.device-table-unlink:hover { background: rgb(0 0 0 / .35); }
+.device-table-connect { display: flex; flex-direction: column; align-items: center; gap: .15rem; width: 100%; min-height: 1.6rem; padding: .15rem .3rem; color: #0f172a; background: transparent; border: 1px dashed transparent; border-radius: .3rem; font: inherit; cursor: pointer; }
+.device-table-connect:hover:not(:disabled), .device-table-connect:focus-visible { border-color: #3b82f6; background: #dbeafe; outline: none; }
+.device-table-remote { color: #1d4ed8; font-weight: 700; }
+.device-table-connect-empty { color: #64748b; }
+.device-table-connect:hover .device-table-connect-empty { color: #1d4ed8; font-weight: 700; }
+.connect-device-backdrop { z-index: 110; }
+.odf-table-modal.connect-device-modal { width: min(520px, calc(100vw - 2rem)); }
+.connect-device-body { display: flex; flex-direction: column; gap: .9rem; }
+.connect-device-body label { display: flex; flex-direction: column; gap: .35rem; color: #cbd5e1; font-size: .82rem; font-weight: 600; }
+.connect-device-body select { padding: .55rem .65rem; color: #f8fafc; background: #0f172a; border: 1px solid #334155; border-radius: .45rem; font: inherit; font-weight: 400; }
+.connect-device-note { margin: 0; padding: .6rem .75rem; color: #cbd5e1; background: #1e293b; border-radius: .45rem; font-size: .82rem; }
+.connect-device-footer { display: flex; justify-content: flex-end; gap: .6rem; padding: .9rem 1.25rem; border-top: 1px solid #334155; }
+.device-table-join { margin: 0 .15rem; color: #334155; font-weight: 800; }
+.device-table-side-free { margin-left: .25rem; font-size: .74rem; }
+.device-table-full td { opacity: .55; }
+@media (max-width: 900px) {
+  .connections-sheet { grid-template-columns: 1fr; }
+  .connections-sheet-device { position: static; }
+}
+@media (max-width: 620px) { .odf-table-backdrop { padding: .65rem; } .odf-table-modal { width: 100%; } .odf-table-body { padding: .8rem; } }

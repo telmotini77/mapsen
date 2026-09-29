@@ -1,0 +1,959 @@
+import { useState, useEffect, useRef, type MouseEvent as ReactMouseEvent } from 'react';
+import Map, { NavigationControl, Marker, Source, Layer } from 'react-map-gl/maplibre';
+import * as maplibregl from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { Layers, MapPin, Activity, Settings, GitPullRequest, Server, LogOut, Users, ClipboardList, ChevronDown, ChevronUp, Menu, X, LayoutDashboard } from 'lucide-react';
+import { MapToolbar } from './components/MapToolbar';
+import { CreateNodeForm } from './components/CreateNodeForm';
+import { ElementPropertiesPanel } from './components/ElementPropertiesPanel';
+import NodesPage from './components/NodesPage';
+import ClientsPage from './components/ClientsPage';
+import InfrastructurePage from './components/InfrastructurePage';
+import OperationsPage from './components/OperationsPage';
+import BoxEditorPage from './components/BoxEditorPage';
+import TracePage from './components/TracePage';
+import RegistryPage from './components/RegistryPage';
+import AuthGate from './components/AuthGate';
+import EditEntityModal from './components/EditEntityModal';
+import { useAuth } from './context/AuthContext';
+import { apiFetch } from './lib/api';
+import { isBoxLikeType } from './lib/nodeTypes';
+
+import './App.css';
+
+const BOX_TYPE_OPTIONS = ['NAP', 'CTO', 'SPLICE_BOX', 'OTHER'].map((v) => ({ value: v, label: v }));
+const NODE_TYPE_OPTIONS = ['NAP', 'CTO', 'SPLICE_BOX', 'POLE', 'CHAMBER', 'POP', 'OLT'].map((v) => ({
+  value: v,
+  label: v,
+}));
+
+// Every node type gets its own color so it's actually distinguishable on the map —
+// a generic "everything else is blue" made poles and OLTs look like they weren't there.
+const NODE_MARKER_COLORS: Record<string, string> = {
+  NAP: '#10b981',
+  CTO: '#eab308',
+  SPLICE_BOX: '#a855f7',
+  POLE: '#78350f',
+  CHAMBER: '#0ea5e9',
+  POP: '#8b5cf6',
+  OLT: '#ef4444',
+};
+const DEFAULT_NODE_COLOR = '#3b82f6';
+
+function nodeMarkerColor(nodeType: string): string {
+  return NODE_MARKER_COLORS[nodeType] ?? DEFAULT_NODE_COLOR;
+}
+
+// Defined once, outside the component: react-map-gl replaces the ENTIRE map style whenever
+// this object's reference changes. An inline literal here would be recreated on every
+// render — including every mousemove while tracing a cable — wiping out the cable line
+// layers before the browser ever got to paint them. Only the dots (plain DOM markers,
+// unrelated to the style) would survive that, matching exactly what was reported.
+const BASE_MAP_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    'osm-tiles': {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors',
+    },
+  },
+  layers: [
+    {
+      id: 'osm-tiles-layer',
+      type: 'raster',
+      source: 'osm-tiles',
+      minzoom: 0,
+      maxzoom: 22,
+    },
+  ],
+};
+
+function App() {
+  const { user, loading, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState('map');
+  const [activeTool, setActiveTool] = useState('select');
+  const [mapClickCoord, setMapClickCoord] = useState<{lng: number, lat: number, x: number, y: number} | null>(null);
+  const [selectedElement, setSelectedElement] = useState<any>(null);
+  const [editingElement, setEditingElement] = useState<any>(null);
+  const [preloadBoxId, setPreloadBoxId] = useState<string | null>(null);
+  const [boxes, setBoxes] = useState<any[]>([]);
+  const [infraBoxes, setInfraBoxes] = useState<any[]>([]);
+  const [cables, setCables] = useState<any[]>([]);
+  const [ducts, setDucts] = useState<any[]>([]);
+  const [cablePoints, setCablePoints] = useState<{ lat: number; lng: number }[]>([]);
+  const [cableCursor, setCableCursor] = useState<{ lat: number; lng: number } | null>(null);
+  const [cableType, setCableType] = useState('DISTRIBUTION');
+  const [ductType, setDuctType] = useState('UNDERGROUND');
+  const [savingRoute, setSavingRoute] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const hasCenteredOnData = useRef(false);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+
+  useEffect(() => {
+    if (activeTool !== 'add-cable' && activeTool !== 'add-duct') {
+      setCableCursor(null);
+    }
+  }, [activeTool]);
+
+  const fetchBoxes = async () => {
+    try {
+      const response = await apiFetch('/api/v1/nodes');
+      const data = await response.json();
+      setBoxes(data);
+    } catch (error) {
+      console.error('Error fetching nodes:', error);
+    }
+  };
+
+  // Boxes (NAP/CTO/splice boxes) live in a separate table from the generic "network nodes"
+  // created by clicking the map. Both need to be drawn, or anything created from the
+  // Registro module or the box editor would never show up here.
+  const fetchInfraBoxes = async () => {
+    try {
+      const response = await apiFetch('/boxes');
+      const data = await response.json();
+      setInfraBoxes(data);
+    } catch (error) {
+      console.error('Error fetching boxes:', error);
+    }
+  };
+
+  const fetchCables = async () => {
+    try {
+      const response = await apiFetch('/cables');
+      setCables(await response.json());
+    } catch (error) {
+      console.error('Error fetching cables:', error);
+    }
+  };
+
+  const fetchDucts = async () => {
+    try {
+      const response = await apiFetch('/ducts');
+      setDucts(await response.json());
+    } catch (error) {
+      console.error('Error fetching ducts:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchBoxes();
+      fetchInfraBoxes();
+      fetchCables();
+      fetchDucts();
+    }
+  }, [user]);
+
+  // Refresh markers whenever the user comes back to the map, so anything created from
+  // Registro, the Box Editor, or the map itself shows up without a full page reload.
+  useEffect(() => {
+    if (user && activeTab === 'map') {
+      fetchBoxes();
+      fetchInfraBoxes();
+      fetchCables();
+      fetchDucts();
+    }
+  }, [user, activeTab]);
+
+  const flyToLocation = (lng: number, lat: number) => {
+    setActiveTab('map');
+    if (mapRef.current) {
+      mapRef.current.flyTo({ center: [lng, lat], zoom: 17 });
+    }
+  };
+
+  // Center the map on real data instead of always snapping back to the hardcoded New York
+  // default whenever the map tab remounts. Boxes with splitters take priority (that's where
+  // the actual FTTH distribution equipment lives); fall back to any registered box or node.
+  useEffect(() => {
+    if (!user || !mapLoaded || hasCenteredOnData.current || !mapRef.current) return;
+
+    apiFetch('/splitters')
+      .then((res) => res.json())
+      .then((splitters: any[]) => {
+        const boxLocations = splitters
+          .map((s) => s.box)
+          .filter((b): b is { latitude: string | number; longitude: string | number } => !!b);
+        if (boxLocations.length > 0) return boxLocations;
+
+        return apiFetch('/boxes')
+          .then((res) => res.json())
+          .then((boxesList: any[]) => {
+            if (boxesList.length > 0) return boxesList;
+            return apiFetch('/api/v1/nodes').then((res) => res.json());
+          });
+      })
+      .then((locations: any[]) => {
+        if (!locations || locations.length === 0 || !mapRef.current) return;
+        hasCenteredOnData.current = true;
+        const avgLng = locations.reduce((sum, b) => sum + Number(b.longitude), 0) / locations.length;
+        const avgLat = locations.reduce((sum, b) => sum + Number(b.latitude), 0) / locations.length;
+        mapRef.current.jumpTo({ center: [avgLng, avgLat], zoom: 15 });
+      })
+      .catch((error) => console.error('Error centering map:', error));
+  }, [user, mapLoaded]);
+
+  // Escape should back the user out of whatever overlay is currently open, one step at a
+  // time: an in-progress cable trace first, then the map-click "add element" popup, then
+  // the selected-element details panel — so a keyboard-only user always has a way out.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (activeTool === 'add-cable' || activeTool === 'add-duct') {
+        setCablePoints([]);
+        setCableCursor(null);
+        setActiveTool('select');
+      } else if (mapClickCoord) {
+        setMapClickCoord(null);
+      } else if (selectedElement) {
+        setSelectedElement(null);
+      } else if (sidebarOpen) {
+        setSidebarOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [activeTool, mapClickCoord, selectedElement, sidebarOpen]);
+
+  if (loading) {
+    return <div className="app-loading">Cargando...</div>;
+  }
+
+  if (!user) {
+    return <AuthGate />;
+  }
+
+  const handleMapClick = (e: any) => {
+    // While tracing a cable, left click is reserved for panning the map (native drag
+    // behavior) and never places a point — only right click does, so the two never fight.
+    if (activeTool === 'add-cable' || activeTool === 'add-duct') return;
+
+    if (activeTool === 'add-node' || activeTool === 'add-pole') {
+      setMapClickCoord({
+        lng: e.lngLat.lng,
+        lat: e.lngLat.lat,
+        x: e.point.x,
+        y: e.point.y
+      });
+    } else if (activeTool === 'select') {
+      // Logic for selecting elements (mocked for now)
+      setMapClickCoord(null);
+    }
+  };
+
+  const handleMapContextMenu = (e: any) => {
+    if (activeTool !== 'add-cable' && activeTool !== 'add-duct') return;
+    e.preventDefault?.();
+    e.originalEvent?.preventDefault?.();
+    setCablePoints((prev) => [...prev, { lat: e.lngLat.lat, lng: e.lngLat.lng }]);
+  };
+
+  // While tracing a cable, right-clicking a node/box adds its location as a route point
+  // instead of opening its details panel — left click on a marker does nothing during
+  // tracing, keeping it free to drag-pan the map without accidentally selecting things.
+  const handleMarkerContextMenu = (e: ReactMouseEvent, lat: number, lng: number) => {
+    if (activeTool !== 'add-cable' && activeTool !== 'add-duct') return;
+    e.preventDefault();
+    e.stopPropagation();
+    setCablePoints((prev) => [...prev, { lat, lng }]);
+  };
+
+  const handleMapMouseMove = (e: any) => {
+    if ((activeTool === 'add-cable' || activeTool === 'add-duct') && cablePoints.length > 0) {
+      setCableCursor({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    }
+  };
+
+  const handleUndoCablePoint = () => {
+    setCablePoints((prev) => prev.slice(0, -1));
+  };
+
+  const handleCancelCable = () => {
+    setCablePoints([]);
+    setCableCursor(null);
+    setActiveTool('select');
+  };
+
+  const handleFinishRoute = async () => {
+    if (cablePoints.length < 2) return;
+    const isDuct = activeTool === 'add-duct';
+    setSavingRoute(true);
+    try {
+      const res = await apiFetch(isDuct ? '/ducts' : '/cables', {
+        method: 'POST',
+        body: JSON.stringify(isDuct ? { type: ductType, points: cablePoints } : { type: cableType, points: cablePoints }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? `No se pudo guardar el ${isDuct ? 'ducto' : 'cable'}`);
+      }
+      setCablePoints([]);
+      setCableCursor(null);
+      setActiveTool('select');
+      if (isDuct) fetchDucts();
+      else fetchCables();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : `No se pudo guardar el ${isDuct ? 'ducto' : 'cable'}`);
+    } finally {
+      setSavingRoute(false);
+    }
+  };
+
+  const handleSaveNode = async (data: any) => {
+    if (!mapClickCoord) return;
+
+    try {
+      // NAP/CTO/Caja de Empalme must always be a real Box (ports, splitters, connections),
+      // not a plain marker — otherwise it wouldn't behave the same everywhere in the app.
+      const isBoxLike = isBoxLikeType(data.nodeType);
+      const path = isBoxLike ? '/boxes' : '/api/v1/nodes';
+      const body = isBoxLike
+        ? { name: data.name, type: data.nodeType, lat: data.latitude, lng: data.longitude }
+        : data;
+
+      const response = await apiFetch(path, {
+        method: 'POST',
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.message ?? 'No se pudo crear el elemento de red');
+      }
+
+      const newItem = await response.json();
+      setSelectedElement({
+        ...newItem,
+        _source: isBoxLike ? 'box' : 'node',
+        type: newItem.nodeType ?? newItem.type,
+        lat: Number(newItem.latitude),
+        lng: Number(newItem.longitude),
+      });
+      setMapClickCoord(null);
+      setActiveTool('select');
+      fetchBoxes();
+      fetchInfraBoxes();
+    } catch (error) {
+      console.error('Error saving node:', error);
+      alert(error instanceof Error ? error.message : 'No se pudo crear el elemento de red');
+    }
+  };
+
+  const refreshMapData = () => {
+    fetchBoxes();
+    fetchInfraBoxes();
+    fetchCables();
+    fetchDucts();
+  };
+
+  const handleDeleteElement = async (element: any) => {
+    if (!window.confirm(`¿Eliminar "${element.name || element.code}"?`)) return;
+    try {
+      const path = element._source === 'box' ? `/boxes/${element.id}` : `/api/v1/nodes/${element.id}`;
+      await apiFetch(path, { method: 'DELETE' });
+      setSelectedElement(null);
+      refreshMapData();
+    } catch (error) {
+      console.error('Error deleting element:', error);
+      alert('No se pudo eliminar el elemento');
+    }
+  };
+
+  const handleUpdateElement = async (values: Record<string, any>) => {
+    if (!editingElement) return;
+    const isBox = editingElement._source === 'box';
+    const path = isBox ? `/boxes/${editingElement.id}` : `/api/v1/nodes/${editingElement.id}`;
+    const body = isBox
+      ? {
+          name: values.name,
+          type: values.type,
+          status: values.status,
+          latitude: Number(values.latitude),
+          longitude: Number(values.longitude),
+        }
+      : {
+          name: values.name,
+          nodeType: values.nodeType,
+          status: values.status,
+          latitude: Number(values.latitude),
+          longitude: Number(values.longitude),
+        };
+    const res = await apiFetch(path, { method: 'PATCH', body: JSON.stringify(body) });
+    if (!res.ok) throw new Error('No se pudo actualizar el elemento');
+    const updated = await res.json();
+    setEditingElement(null);
+    setSelectedElement({
+      ...updated,
+      _source: editingElement._source,
+      type: updated.type ?? updated.nodeType,
+      lat: Number(updated.latitude),
+      lng: Number(updated.longitude),
+    });
+    refreshMapData();
+  };
+
+  // Legacy NAP/CTO/Caja de Empalme created as plain nodes (before boxes and nodes were
+  // unified) have no ports and can't be connected to anything. This turns one into a real
+  // box in place, without the user having to re-enter its name or location.
+  const handleConvertToBox = async (element: any) => {
+    if (!window.confirm(`Convertir "${element.name}" en una caja completa (con puertos y conexiones)?`)) return;
+    try {
+      const res = await apiFetch('/boxes', {
+        method: 'POST',
+        body: JSON.stringify({ name: element.name, type: element.nodeType, lat: element.lat, lng: element.lng }),
+      });
+      if (!res.ok) throw new Error('No se pudo crear la caja');
+      const newBox = await res.json();
+      await apiFetch(`/api/v1/nodes/${element.id}`, { method: 'DELETE' });
+      setSelectedElement({
+        ...newBox,
+        _source: 'box',
+        type: newBox.type,
+        lat: Number(newBox.latitude),
+        lng: Number(newBox.longitude),
+      });
+      refreshMapData();
+    } catch (error) {
+      console.error('Error converting to box:', error);
+      alert('No se pudo convertir el elemento en caja');
+    }
+  };
+
+  const handleOpenBoxEditor = (element: any) => {
+    if (element._source !== 'box') {
+      alert('Este elemento aún no es una caja completa. Usa "Convertir a caja" primero.');
+      return;
+    }
+    setPreloadBoxId(element.id);
+    setActiveTab('box-editor');
+  };
+
+  const handleViewConnections = (element: any) => {
+    if (element._source !== 'box') {
+      alert('Este elemento aún no es una caja completa. Usa "Convertir a caja" primero.');
+      return;
+    }
+    setPreloadBoxId(element.id);
+    setActiveTab('trace');
+  };
+
+  // On narrow screens the sidebar is an off-canvas drawer; picking a section should close
+  // it automatically so the user immediately sees the content instead of an empty drawer.
+  const handleSelectTab = (tab: string) => {
+    setActiveTab(tab);
+    setSidebarOpen(false);
+  };
+
+  return (
+    <div className="app-container">
+      {sidebarOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <button
+        type="button"
+        className="mobile-menu-toggle icon-button"
+        onClick={() => setSidebarOpen((prev) => !prev)}
+        aria-label={sidebarOpen ? 'Cerrar menú' : 'Abrir menú'}
+        aria-expanded={sidebarOpen}
+        aria-controls="app-sidebar"
+      >
+        {sidebarOpen ? <X size={20} aria-hidden="true" /> : <Menu size={20} aria-hidden="true" />}
+      </button>
+
+      {/* Sidebar */}
+      <aside id="app-sidebar" className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="logo-container">
+            <Activity className="logo-icon" aria-hidden="true" />
+            <span className="logo-text">FiberMap</span>
+          </div>
+        </div>
+
+        <nav className="sidebar-nav" aria-label="Secciones principales">
+          <button
+            className={`nav-item ${activeTab === 'operations' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('operations')}
+            aria-current={activeTab === 'operations' ? 'page' : undefined}
+          >
+            <LayoutDashboard className="nav-icon" aria-hidden="true" />
+            <span>Operaciones</span>
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'map' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('map')}
+            aria-current={activeTab === 'map' ? 'page' : undefined}
+          >
+            <MapPin className="nav-icon" aria-hidden="true" />
+            <span>Mapa FTTH</span>
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'registry' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('registry')}
+            aria-current={activeTab === 'registry' ? 'page' : undefined}
+          >
+            <ClipboardList className="nav-icon" aria-hidden="true" />
+            <span>Registro</span>
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'nodes' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('nodes')}
+            aria-current={activeTab === 'nodes' ? 'page' : undefined}
+          >
+            <Server className="nav-icon" aria-hidden="true" />
+            <span>Nodos de Red</span>
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'clients' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('clients')}
+            aria-current={activeTab === 'clients' ? 'page' : undefined}
+          >
+            <Users className="nav-icon" aria-hidden="true" />
+            <span>Clientes</span>
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'infrastructure' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('infrastructure')}
+            aria-current={activeTab === 'infrastructure' ? 'page' : undefined}
+          >
+            <Server className="nav-icon" aria-hidden="true" />
+            <span>Infraestructura</span>
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'box-editor' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('box-editor')}
+            aria-current={activeTab === 'box-editor' ? 'page' : undefined}
+          >
+            <GitPullRequest className="nav-icon" aria-hidden="true" />
+            <span>Editor de Cajas</span>
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'trace' ? 'active' : ''}`}
+            onClick={() => handleSelectTab('trace')}
+            aria-current={activeTab === 'trace' ? 'page' : undefined}
+          >
+            <Layers className="nav-icon" aria-hidden="true" />
+            <span>Trazabilidad</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <span className="sidebar-user-email">{user.email}</span>
+            <span className="sidebar-user-roles">{user.roles.join(', ')}</span>
+          </div>
+          <button className="nav-item">
+            <Settings className="nav-icon" aria-hidden="true" />
+            <span>Ajustes</span>
+          </button>
+          <button className="nav-item" onClick={logout}>
+            <LogOut className="nav-icon" aria-hidden="true" />
+            <span>Cerrar sesión</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="main-content">
+        {activeTab === 'operations' && (
+          <OperationsPage onNavigate={handleSelectTab} />
+        )}
+        <div className="map-wrapper" style={{ display: activeTab === 'map' ? 'block' : 'none' }}>
+            <Map
+              mapLib={maplibregl}
+              ref={(instance) => {
+                mapRef.current = instance?.getMap() ?? null;
+              }}
+              onLoad={() => setMapLoaded(true)}
+              initialViewState={{
+                longitude: -74.006,
+                latitude: 40.7128,
+                zoom: 12
+              }}
+              style={{ width: '100%', height: '100%' }}
+              mapStyle={BASE_MAP_STYLE}
+              onClick={handleMapClick}
+              onContextMenu={handleMapContextMenu}
+              onMouseMove={handleMapMouseMove}
+              cursor={activeTool === 'add-cable' || activeTool === 'add-duct' ? 'crosshair' : undefined}
+              interactiveLayerIds={['osm-tiles-layer']}
+            >
+              <NavigationControl position="top-right" />
+              
+              <MapToolbar activeTool={activeTool} onToolSelect={setActiveTool} />
+              
+              {boxes.map((box) => (
+                <Marker
+                  key={`node-${box.id}`}
+                  longitude={Number(box.longitude)}
+                  latitude={Number(box.latitude)}
+                  anchor="center"
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation();
+                    if (activeTool === 'add-cable' || activeTool === 'add-duct') return;
+                    setSelectedElement({
+                      ...box,
+                      _source: 'node',
+                      lng: Number(box.longitude),
+                      lat: Number(box.latitude)
+                    });
+                    setActiveTool('select');
+                  }}
+                >
+                  <div
+                    onContextMenu={(e) => handleMarkerContextMenu(e, Number(box.latitude), Number(box.longitude))}
+                    style={{
+                      width: '14px',
+                      height: '14px',
+                      backgroundColor: nodeMarkerColor(box.nodeType),
+                      borderRadius: '50%',
+                      border: '2px solid white',
+                      cursor: activeTool === 'add-cable' || activeTool === 'add-duct' ? 'crosshair' : 'pointer',
+                      boxShadow: '0 0 0 1px rgba(0,0,0,0.6)'
+                    }}
+                    title={`${box.code} (${box.nodeType})`}
+                  />
+                </Marker>
+              ))}
+
+              {infraBoxes.map((box) => (
+                <Marker
+                  key={`box-${box.id}`}
+                  longitude={Number(box.longitude)}
+                  latitude={Number(box.latitude)}
+                  anchor="center"
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation();
+                    if (activeTool === 'add-cable' || activeTool === 'add-duct') return;
+                    setSelectedElement({
+                      ...box,
+                      _source: 'box',
+                      lng: Number(box.longitude),
+                      lat: Number(box.latitude),
+                      nodeType: box.type,
+                    });
+                    setActiveTool('select');
+                  }}
+                >
+                  <div
+                    onContextMenu={(e) => handleMarkerContextMenu(e, Number(box.latitude), Number(box.longitude))}
+                    style={{
+                      width: '14px',
+                      height: '14px',
+                      backgroundColor: '#f59e0b',
+                      border: '2px solid white',
+                      cursor: activeTool === 'add-cable' || activeTool === 'add-duct' ? 'crosshair' : 'pointer',
+                      boxShadow: '0 0 0 1px rgba(0,0,0,0.5)',
+                    }}
+                    title={`${box.code} (Caja ${box.type})`}
+                  />
+                </Marker>
+              ))}
+              
+              {cables.map((cable) =>
+                cable.path?.length >= 2 ? (
+                  <Source
+                    key={cable.id}
+                    id={`cable-${cable.id}`}
+                    type="geojson"
+                    data={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: cable.path.map((p: { lat: number; lng: number }) => [p.lng, p.lat]),
+                      },
+                    }}
+                  >
+                    <Layer
+                      id={`cable-layer-${cable.id}`}
+                      type="line"
+                      paint={{ 'line-color': '#ef4444', 'line-width': 3 }}
+                      layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                    />
+                  </Source>
+                ) : null,
+              )}
+
+              {ducts.map((duct) =>
+                duct.path?.length >= 2 ? (
+                  <Source
+                    key={duct.id}
+                    id={`duct-${duct.id}`}
+                    type="geojson"
+                    data={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: duct.path.map((p: { lat: number; lng: number }) => [p.lng, p.lat]),
+                      },
+                    }}
+                  >
+                    <Layer
+                      id={`duct-layer-${duct.id}`}
+                      type="line"
+                      paint={{ 'line-color': '#2563eb', 'line-width': 3, 'line-dasharray': [1.5, 1.5] }}
+                      layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                    />
+                  </Source>
+                ) : null,
+              )}
+
+              {cablePoints.length >= 2 && (
+                <Source
+                  id="cable-draft"
+                  type="geojson"
+                  data={{
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                      type: 'LineString',
+                      coordinates: cablePoints.map((p) => [p.lng, p.lat]),
+                    },
+                  }}
+                >
+                  <Layer
+                    id="cable-draft-layer"
+                    type="line"
+                    paint={{ 'line-color': '#22d3ee', 'line-width': 4 }}
+                    layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  />
+                </Source>
+              )}
+
+              {/* Rubber-band segment: the line keeps extending live from the last confirmed
+                  point toward the cursor, until the next click plants a new point. */}
+              {cablePoints.length >= 1 && cableCursor && (
+                <Source
+                  id="cable-draft-preview"
+                  type="geojson"
+                  data={{
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                      type: 'LineString',
+                      coordinates: [
+                        [cablePoints[cablePoints.length - 1].lng, cablePoints[cablePoints.length - 1].lat],
+                        [cableCursor.lng, cableCursor.lat],
+                      ],
+                    },
+                  }}
+                >
+                  <Layer
+                    id="cable-draft-preview-layer"
+                    type="line"
+                    paint={{ 'line-color': '#67e8f9', 'line-width': 3, 'line-dasharray': [2, 1.5] }}
+                    layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  />
+                </Source>
+              )}
+
+              {cablePoints.map((p, i) => (
+                <Marker key={`cable-point-${i}`} longitude={p.lng} latitude={p.lat} anchor="center">
+                  <div
+                    style={{
+                      width: '8px',
+                      height: '8px',
+                      backgroundColor: '#0f172a',
+                      borderRadius: '50%',
+                      border: '2px solid #22d3ee',
+                    }}
+                  />
+                </Marker>
+              ))}
+
+              {mapClickCoord && (
+                <CreateNodeForm
+                  x={mapClickCoord.x}
+                  y={mapClickCoord.y}
+                  lng={mapClickCoord.lng}
+                  lat={mapClickCoord.lat}
+                  defaultNodeType={activeTool === 'add-pole' ? 'POLE' : 'NAP'}
+                  onClose={() => setMapClickCoord(null)}
+                  onSave={handleSaveNode}
+                />
+              )}
+
+              {selectedElement && activeTool === 'select' && (
+                <ElementPropertiesPanel
+                  element={selectedElement}
+                  onClose={() => setSelectedElement(null)}
+                  onOpenEditor={() => handleOpenBoxEditor(selectedElement)}
+                  onEdit={() => setEditingElement(selectedElement)}
+                  onDelete={() => handleDeleteElement(selectedElement)}
+                  onViewConnections={() => handleViewConnections(selectedElement)}
+                  onConvertToBox={() => handleConvertToBox(selectedElement)}
+                />
+              )}
+            </Map>
+
+              {(activeTool === 'add-cable' || activeTool === 'add-duct') && (
+                <div className="cable-draw-panel" role="region" aria-label="Trazando cable">
+                <h4>Trazando {activeTool === 'add-duct' ? 'ducto' : 'cable'}</h4>
+                <p>
+                  Clic <strong>derecho</strong> en el mapa (o sobre una caja/nodo) para agregar un punto.
+                  El clic izquierdo queda libre para desplazar el mapa.
+                </p>
+                <p className="muted" aria-live="polite">{cablePoints.length} punto(s) agregado(s)</p>
+                {activeTool === 'add-cable' ? (
+                  <>
+                    <label className="visually-hidden" htmlFor="cable-type-select">Tipo de cable</label>
+                    <select id="cable-type-select" value={cableType} onChange={(e) => setCableType(e.target.value)}>
+                      <option value="FEEDER">Feeder</option>
+                      <option value="DISTRIBUTION">Distribución</option>
+                      <option value="BACKBONE">Backbone</option>
+                      <option value="DROP">Drop</option>
+                      <option value="INTERCONNECT">Interconexión</option>
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <label className="visually-hidden" htmlFor="duct-type-select">Tipo de ducto</label>
+                    <select id="duct-type-select" value={ductType} onChange={(e) => setDuctType(e.target.value)}>
+                      <option value="UNDERGROUND">Subterráneo</option>
+                      <option value="AERIAL">Aéreo</option>
+                      <option value="MICRODUCT">Microducto</option>
+                      <option value="OTHER">Otro</option>
+                    </select>
+                  </>
+                )}
+                <div className="cable-draw-actions">
+                  <button
+                    className="btn-secondary"
+                    onClick={handleUndoCablePoint}
+                    disabled={cablePoints.length === 0}
+                    aria-label="Deshacer el último punto agregado"
+                  >
+                    Deshacer punto
+                  </button>
+                  <button className="btn-secondary" onClick={handleCancelCable} aria-label="Cancelar el trazado del cable">
+                    Cancelar
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={handleFinishRoute}
+                    disabled={cablePoints.length < 2 || savingRoute}
+                    aria-label={`Finalizar y guardar el ${activeTool === 'add-duct' ? 'ducto' : 'cable'}`}
+                  >
+                    {savingRoute ? 'Guardando...' : `Finalizar ${activeTool === 'add-duct' ? 'ducto' : 'cable'}`}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="map-overlay">
+              <div className={`overlay-panel ${legendOpen ? 'expanded' : 'collapsed'}`}>
+                <button
+                  type="button"
+                  className="overlay-panel-toggle"
+                  onClick={() => setLegendOpen((prev) => !prev)}
+                  aria-expanded={legendOpen}
+                  aria-controls="infrastructure-legend-body"
+                >
+                  <h3>Infraestructura</h3>
+                  {legendOpen ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronUp size={16} aria-hidden="true" />}
+                </button>
+                {legendOpen && (
+                  <div className="overlay-panel-body" id="infrastructure-legend-body">
+                    <div className="legend-item">
+                      <span style={{ backgroundColor: '#f59e0b', width: 10, height: 10, display: 'inline-block' }}></span> Caja NAP/CTO/Empalme (con puertos y conexiones)
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ backgroundColor: '#2563eb', width: 18, height: 3, display: 'inline-block' }}></span> Ducto
+                    </div>
+                    {Object.entries(NODE_MARKER_COLORS).map(([type, color]) => (
+                      <div className="legend-item" key={type}>
+                        <span style={{ backgroundColor: color, borderRadius: '50%', width: 10, height: 10, display: 'inline-block' }}></span> Nodo {type}
+                      </div>
+                    ))}
+                    <div className="legend-item">
+                      <span style={{ backgroundColor: DEFAULT_NODE_COLOR, borderRadius: '50%', width: 10, height: 10, display: 'inline-block' }}></span> Nodo (otro tipo)
+                    </div>
+                    <div className="legend-item">
+                      <span style={{ backgroundColor: '#ef4444', width: 14, height: 3, display: 'inline-block' }}></span> Cable
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+        </div>
+
+        {activeTab === 'registry' && (
+          <RegistryPage />
+        )}
+
+        {activeTab === 'nodes' && (
+          <NodesPage
+            onViewNode={(node) => {
+              setSelectedElement({ ...node, lng: Number(node.longitude), lat: Number(node.latitude) });
+              setActiveTool('select');
+              flyToLocation(Number(node.longitude), Number(node.latitude));
+            }}
+          />
+        )}
+
+        {activeTab === 'clients' && (
+          <ClientsPage />
+        )}
+
+        {activeTab === 'infrastructure' && (
+          <InfrastructurePage />
+        )}
+
+        {activeTab === 'box-editor' && (
+          <BoxEditorPage initialBoxId={preloadBoxId} onConsumeInitialBoxId={() => setPreloadBoxId(null)} />
+        )}
+
+        {activeTab === 'trace' && (
+          <TracePage initialBoxId={preloadBoxId} onConsumeInitialBoxId={() => setPreloadBoxId(null)} />
+        )}
+      </main>
+
+      {editingElement && (
+        <EditEntityModal
+          title={`Editar: ${editingElement.name || editingElement.code}`}
+          initialValues={editingElement}
+          onClose={() => setEditingElement(null)}
+          onSave={handleUpdateElement}
+          fields={
+            editingElement._source === 'box'
+              ? [
+                  { key: 'name', label: 'Nombre' },
+                  { key: 'type', label: 'Tipo', type: 'select', options: BOX_TYPE_OPTIONS },
+                  { key: 'status', label: 'Estado', type: 'select', options: [
+                    { value: 'ACTIVE', label: 'ACTIVE' },
+                    { value: 'INACTIVE', label: 'INACTIVE' },
+                  ] },
+                  { key: 'latitude', label: 'Latitud', type: 'number' },
+                  { key: 'longitude', label: 'Longitud', type: 'number' },
+                ]
+              : [
+                  { key: 'name', label: 'Nombre' },
+                  { key: 'nodeType', label: 'Tipo', type: 'select', options: NODE_TYPE_OPTIONS },
+                  { key: 'status', label: 'Estado', type: 'select', options: [
+                    { value: 'PLANNED', label: 'PLANNED' },
+                    { value: 'ACTIVE', label: 'ACTIVE' },
+                    { value: 'INACTIVE', label: 'INACTIVE' },
+                    { value: 'DECOMMISSIONED', label: 'DECOMMISSIONED' },
+                  ] },
+                  { key: 'latitude', label: 'Latitud', type: 'number' },
+                  { key: 'longitude', label: 'Longitud', type: 'number' },
+                ]
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+export default App;

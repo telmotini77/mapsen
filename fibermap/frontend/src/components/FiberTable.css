@@ -1,0 +1,25 @@
+.fiber-table-wrap { overflow-x: auto; border: 1px solid #334155; border-radius: .55rem; }
+.fiber-table { width: 100%; min-width: 19rem; border-collapse: collapse; font-size: .82rem; }
+.fiber-table th { padding: .5rem .6rem; color: #e2e8f0; background: #1e3a8a; border: 1px solid #0f172a; font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.fiber-table td { padding: 0; border: 1px solid #0f172a; text-align: center; }
+.fiber-table-port { width: 4.2rem; padding: .35rem .5rem !important; color: #0f172a; background: #f1f5f9; font-weight: 700; }
+.fiber-table-device { width: 2.6rem; color: #0f172a; background: #f8fafc; }
+.fiber-table-device span { display: inline-block; max-height: 100%; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; writing-mode: vertical-rl; transform: rotate(180deg); }
+.fiber-table-hilo { width: 4.2rem; font-weight: 800; }
+.fiber-table-hilo button { width: 100%; padding: .38rem .5rem; background: transparent; border: 0; font: inherit; cursor: pointer; }
+.fiber-table-hilo button:focus-visible { outline: 3px solid #f8fafc; outline-offset: -3px; }
+.fiber-table-buffer { width: 6.2rem; padding: .4rem !important; }
+.fiber-table-buffer strong, .fiber-table-buffer span { display: block; }
+.fiber-table-buffer span { margin-top: .2rem; font-size: .72rem; font-weight: 800; letter-spacing: .05em; }
+.fiber-table-service { padding: .38rem .6rem !important; font-weight: 800; letter-spacing: .02em; }
+.fiber-table tr.is-selected .fiber-table-hilo, .fiber-table tr.is-selected .fiber-table-service { box-shadow: inset 0 0 0 3px #f8fafc; }
+.fiber-table-detail-panel { margin-top: .75rem; border: 1px solid #3b82f6; border-radius: .55rem; background: #0f172a88; }
+@media (max-width: 620px) {
+  .fiber-table { font-size: .76rem; }
+  .fiber-table-buffer { width: 4.6rem; }
+  .fiber-table-port, .fiber-table-hilo { width: 3.2rem; }
+}
+.fiber-table-link { padding: .38rem .6rem !important; color: #0f172a; background: #e0f2fe; font-weight: 700; white-space: nowrap; }
+.fiber-table-link.is-empty { color: #64748b; background: #f1f5f9; font-weight: 500; }
+.fiber-table tr.is-clickable { cursor: pointer; }
+.fiber-table tr.is-clickable:hover .fiber-table-link { background: #bae6fd; }

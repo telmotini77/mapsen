@@ -1,0 +1,27 @@
+.map-scale-indicator {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 4.6rem;
+  z-index: 5;
+  width: 210px;
+  padding: 0.55rem 0.7rem;
+  color: var(--text-main);
+  background: rgba(30, 41, 59, 0.92);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+.map-scale-row { display: flex; justify-content: space-between; gap: 0.5rem; align-items: baseline; }
+.map-scale-row strong { font-size: 0.82rem; }
+.map-scale-small { margin-top: 0.3rem; color: var(--text-muted); font-size: 0.7rem; }
+.map-scale-bar { position: relative; height: 6px; margin-top: 0.4rem; background: rgba(148, 163, 184, 0.3); border-radius: 99px; }
+.map-scale-fill { position: absolute; inset: 0 auto 0 0; background: #3b82f6; border-radius: 99px; }
+.map-scale-tick { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #f8fafc; border-radius: 1px; }
+.poles-on { color: #86efac; font-weight: 700; }
+.poles-off { color: #fcd34d; }
+
+@media (max-width: 860px) {
+  .map-scale-indicator { bottom: 5.4rem; width: 180px; }
+}

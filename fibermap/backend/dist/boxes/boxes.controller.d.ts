@@ -1,0 +1,244 @@
+import { BoxesService } from './boxes.service.js';
+import { CreateBoxDto, UpdateBoxDto } from './dto/create-box.dto.js';
+export declare class BoxesController {
+    private readonly boxesService;
+    constructor(boxesService: BoxesService);
+    create(createBoxDto: CreateBoxDto): Promise<{
+        splitters: {
+            code: string;
+            name: string | null;
+            status: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            deletedAt: Date | null;
+            projectId: string;
+            manufacturerId: string | null;
+            model: string | null;
+            version: number;
+            boxId: string | null;
+            ratio: string;
+            splitterType: string;
+            inputCount: number;
+            outputCount: number;
+            insertionLossDb: import("@prisma/client/runtime/library").Decimal | null;
+        }[];
+    } & {
+        code: string;
+        name: string | null;
+        description: string | null;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        projectId: string;
+        type: string;
+        manufacturerId: string | null;
+        installationType: string | null;
+        capacity: number | null;
+        mangaType: string | null;
+        portCapacity: number;
+        usedPorts: number;
+        equipmentModelId: string | null;
+    }>;
+    findAll(): Promise<({
+        splitters: {
+            code: string;
+            id: string;
+            ratio: string;
+        }[];
+    } & {
+        code: string;
+        name: string | null;
+        description: string | null;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        projectId: string;
+        type: string;
+        manufacturerId: string | null;
+        installationType: string | null;
+        capacity: number | null;
+        mangaType: string | null;
+        portCapacity: number;
+        usedPorts: number;
+        equipmentModelId: string | null;
+    })[]>;
+    table(id: string): Promise<{
+        device: {
+            id: string;
+            kind: "MANGA" | "NAP";
+            code: string;
+            name: string | null;
+            mangaType: string | null;
+            capacity: number | null;
+            status: string;
+        };
+        portsInUse: number;
+        cables: import("../cables/connections-table.service.js").ConnectionsTableCable[];
+        terminals: import("../cables/connections-table.service.js").DeviceTerminal[];
+    }>;
+    findOne(id: string): Promise<{
+        splitters: ({
+            ports: {
+                number: number;
+                status: string;
+                id: string;
+                createdAt: Date;
+                lossDb: import("@prisma/client/runtime/library").Decimal | null;
+                label: string | null;
+                splitterId: string;
+                portType: string;
+            }[];
+        } & {
+            code: string;
+            name: string | null;
+            status: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            deletedAt: Date | null;
+            projectId: string;
+            manufacturerId: string | null;
+            model: string | null;
+            version: number;
+            boxId: string | null;
+            ratio: string;
+            splitterType: string;
+            inputCount: number;
+            outputCount: number;
+            insertionLossDb: import("@prisma/client/runtime/library").Decimal | null;
+        })[];
+        ports: {
+            number: number;
+            status: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            deletedAt: Date | null;
+            notes: string | null;
+            type: string;
+            label: string | null;
+            boxId: string;
+            direction: string | null;
+        }[];
+        opticalTerminations: {
+            id: string;
+            createdAt: Date;
+            type: string;
+            entityType: string;
+            entityId: string;
+            portIdentifier: string | null;
+            boxId: string | null;
+            odfId: string | null;
+            metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        }[];
+    } & {
+        code: string;
+        name: string | null;
+        description: string | null;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        projectId: string;
+        type: string;
+        manufacturerId: string | null;
+        installationType: string | null;
+        capacity: number | null;
+        mangaType: string | null;
+        portCapacity: number;
+        usedPorts: number;
+        equipmentModelId: string | null;
+    }>;
+    update(id: string, updateBoxDto: UpdateBoxDto): Promise<{
+        code: string;
+        name: string | null;
+        description: string | null;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        projectId: string;
+        type: string;
+        manufacturerId: string | null;
+        installationType: string | null;
+        capacity: number | null;
+        mangaType: string | null;
+        portCapacity: number;
+        usedPorts: number;
+        equipmentModelId: string | null;
+    }>;
+    generatePorts(id: string, body: {
+        count: number;
+        type?: string;
+    }): Promise<{
+        ports: {
+            number: number;
+            status: string;
+            id: string;
+            createdAt: Date;
+            updatedAt: Date;
+            deletedAt: Date | null;
+            notes: string | null;
+            type: string;
+            label: string | null;
+            boxId: string;
+            direction: string | null;
+        }[];
+    } & {
+        code: string;
+        name: string | null;
+        description: string | null;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        projectId: string;
+        type: string;
+        manufacturerId: string | null;
+        installationType: string | null;
+        capacity: number | null;
+        mangaType: string | null;
+        portCapacity: number;
+        usedPorts: number;
+        equipmentModelId: string | null;
+    }>;
+    remove(id: string): Promise<{
+        code: string;
+        name: string | null;
+        description: string | null;
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        latitude: import("@prisma/client/runtime/library").Decimal;
+        longitude: import("@prisma/client/runtime/library").Decimal;
+        projectId: string;
+        type: string;
+        manufacturerId: string | null;
+        installationType: string | null;
+        capacity: number | null;
+        mangaType: string | null;
+        portCapacity: number;
+        usedPorts: number;
+        equipmentModelId: string | null;
+    }>;
+}

@@ -1,0 +1,2 @@
+# Database backup dumps are kept locally and should not be versioned.
+backups/*.sql

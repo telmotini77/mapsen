@@ -1,0 +1,504 @@
+:root {
+  --primary: #3b82f6;
+  --primary-hover: #2563eb;
+  --bg-dark: #0f172a;
+  --bg-panel: #1e293b;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border: #334155;
+  
+  --cable-color: #ef4444;
+  --distribution-color: #3b82f6;
+  --cto-color: #10b981;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  overflow: hidden;
+}
+
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* The hamburger toggle only exists for the off-canvas sidebar on narrow screens;
+   on desktop the sidebar is always visible so this control stays out of the way. */
+.mobile-menu-toggle {
+  display: none;
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 30;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text-main);
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background-color: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
+}
+
+.sidebar-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+}
+
+.nav-item:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: var(--text-main);
+}
+
+.nav-item.active {
+  background-color: var(--primary);
+  color: white;
+}
+
+.sidebar-footer {
+  padding: 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sidebar-user {
+  padding: 0.5rem 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-user-email {
+  font-size: 0.85rem;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.sidebar-user-roles {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.app-loading {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background-color: var(--bg-dark);
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  /* Without this, a flex item won't shrink below its content's intrinsic width (the
+     default min-width is `auto`, not 0) — a wide table further down the tree was
+     stretching this whole column past the viewport instead of scrolling within its own
+     container. */
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.map-overlay {
+  position: absolute;
+  bottom: 2rem;
+  left: 2rem;
+  z-index: 5;
+}
+
+.cable-draw-panel {
+  position: absolute;
+  /* Anclado a la derecha (debajo de la barra de herramientas); al arrastrarlo el hook fija left/top. */
+  top: 5rem;
+  right: 1rem;
+  z-index: 6;
+  background-color: rgba(30, 41, 59, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  width: 340px;
+}
+
+.cable-draw-panel h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.cable-draw-panel p {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.cable-draw-panel select {
+  width: 100%;
+  background-color: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.cable-draw-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cable-draw-actions button {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.overlay-panel {
+  background-color: rgba(30, 41, 59, 0.9);
+  backdrop-filter: blur(8px);
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  min-width: 200px;
+  overflow: hidden;
+}
+
+.overlay-panel-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0.85rem 1.25rem;
+  color: var(--text-muted);
+}
+
+.overlay-panel.expanded .overlay-panel-toggle {
+  border-bottom: 1px solid var(--border);
+}
+
+.overlay-panel-body {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.overlay-panel h3 {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.color-box {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.color-box.cable { background-color: var(--cable-color); }
+.color-box.distribution { background-color: var(--distribution-color); }
+.color-box.cto { 
+  background-color: var(--cto-color); 
+  height: 12px; 
+  width: 12px;
+  border-radius: 50%;
+}
+
+/* Views */
+.view-panel {
+  padding: 2rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-dark);
+}
+
+.panel-header {
+  margin-bottom: 2rem;
+}
+
+.panel-header h2 {
+  font-size: 1.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.panel-header p {
+  color: var(--text-muted);
+}
+
+.editor-workspace, .trace-workspace {
+  flex: 1;
+  background-color: var(--bg-panel);
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  max-width: 300px;
+}
+
+.empty-icon {
+  margin-bottom: 1rem;
+  color: var(--border);
+}
+
+.empty-state p {
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
+}
+
+/* Below tablet width there isn't room for a fixed 260px sidebar next to the map/content,
+   so it becomes an off-canvas drawer toggled by a hamburger button, with a translucent
+   backdrop to close it by tapping outside — the standard mobile nav pattern. */
+@media (max-width: 860px) {
+  .mobile-menu-toggle {
+    display: inline-flex;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 15;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    width: min(260px, 82vw);
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.4);
+    /* Must sit above .sidebar-backdrop (z-index: 15) or the backdrop intercepts every
+       click meant for the nav buttons underneath it. */
+    z-index: 20;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-header {
+    padding-left: 4rem;
+  }
+
+  .view-panel {
+    padding: 1rem;
+    padding-top: 4rem;
+  }
+
+  .map-wrapper {
+    padding-top: 0;
+  }
+
+  .cable-draw-panel {
+    width: min(340px, calc(100% - 1.5rem));
+    top: 7.5rem;
+    right: 0.75rem;
+  }
+
+  .map-overlay {
+    left: 1rem;
+    right: 1rem;
+    bottom: 5.5rem;
+  }
+
+  .overlay-panel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .cable-draw-actions {
+    flex-direction: column;
+  }
+
+  .cable-draw-actions button {
+    width: 100%;
+  }
+
+  .panel-header h2 {
+    font-size: 1.4rem;
+  }
+}
+
+/* Puntos editables al modificar el trazado de una fibra */
+.path-vertex {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 3px solid #ef4444;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  cursor: grab;
+}
+.path-vertex:active { cursor: grabbing; }
+
+.trace-warning { color: #fca5a5 !important; font-weight: 600; }
+.trace-connections { margin: 0 0 0.6rem; padding: 0; list-style: none; font-size: 0.78rem; color: var(--text-main); display: grid; gap: 0.2rem; }
+.trace-connections span { color: #93c5fd; font-weight: 700; margin-right: 0.25rem; }
+.cable-draw-panel { max-height: calc(100vh - 8rem); overflow-y: auto; }
+
+.connection-banner {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.55rem 0.9rem;
+  color: #fecaca;
+  background: #7f1d1d;
+  border: 1px solid #ef4444;
+  border-radius: 0.6rem;
+  font-size: 0.82rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.connection-banner button {
+  color: #fff;
+  background: transparent;
+  border: 1px solid #fecaca;
+  border-radius: 0.4rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.cable-delete-inline { color: #fca5a5 !important; border-color: #7f1d1d !important; }
+.cable-delete-inline:hover:not(:disabled) { background: #7f1d1d66 !important; border-color: #ef4444 !important; }
+.cable-draw-actions + .cable-draw-actions { margin-top: 0.5rem; }
+
+.connection-banner .dismissible-alert-text { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.trace-warning.dismissible-alert { margin-bottom: 0.5rem; }
+
+.draw-panel-header { gap: 0.35rem; margin: -0.25rem 0 0.4rem; display: flex; align-items: center; }
+.draw-panel-header h4 { flex: 1; margin: 0 !important; }
+
+/* Aviso o ayuda sobre el mapa al colocar cajas o trazar fibras sobre los postes. */
+.map-hint {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: max-content;
+  max-width: min(34rem, calc(100% - 1.5rem));
+  padding: 0.5rem 0.85rem;
+  color: #e2e8f0;
+  background: #0f172aee;
+  border: 1px solid #334155;
+  border-radius: 0.6rem;
+  font-size: 0.82rem;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.map-hint-warning { color: #fef3c7; background: #78350f; border-color: #f59e0b; }
+.snap-ring {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #fbbf24;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.25);
+  pointer-events: none;
+}

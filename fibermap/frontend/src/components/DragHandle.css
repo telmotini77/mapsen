@@ -1,0 +1,24 @@
+.modal-header-draggable {
+  gap: 0.35rem;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.modal-header-draggable:active { cursor: grabbing; }
+.modal-header-draggable h4 { flex: 1; }
+
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 32px;
+  margin-left: -0.35rem;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: grab;
+}
+.drag-handle:hover, .drag-handle:focus-visible { color: var(--text-main); background: rgba(255, 255, 255, 0.08); }
