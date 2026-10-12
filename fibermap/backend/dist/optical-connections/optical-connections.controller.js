@@ -10,6 +10,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+import { SetNormalMappingDto } from './dto/set-normal-mapping.dto.js';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException } from '@nestjs/common';
 import { OpticalConnectionsService } from './optical-connections.service.js';
 import { CreateOpticalConnectionDto } from './dto/create-optical-connection.dto.js';
@@ -25,6 +26,9 @@ let OpticalConnectionsController = class OpticalConnectionsController {
     }
     createFiberLink(dto) {
         return this.opticalConnectionsService.createFiberLink(dto);
+    }
+    setNormalMapping(dto) {
+        return this.opticalConnectionsService.setNormalMapping(dto);
     }
     findAll(boxId) {
         if (!boxId) {
@@ -62,6 +66,13 @@ __decorate([
     __metadata("design:paramtypes", [CreateFiberLinkDto]),
     __metadata("design:returntype", void 0)
 ], OpticalConnectionsController.prototype, "createFiberLink", null);
+__decorate([
+    Post('normal-mapping'),
+    __param(0, Body()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [SetNormalMappingDto]),
+    __metadata("design:returntype", void 0)
+], OpticalConnectionsController.prototype, "setNormalMapping", null);
 __decorate([
     Get(),
     __param(0, Query('boxId')),

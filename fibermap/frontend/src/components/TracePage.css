@@ -231,3 +231,9 @@
 .trace-register { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1rem; }
 .trace-register .btn-primary { padding: 0.55rem 0.9rem; font-size: 0.85rem; }
 .trace-register .muted { flex: 1 1 16rem; }
+
+.trace-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

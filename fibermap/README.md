@@ -1,40 +1,37 @@
 # FiberMap
 
-FiberMap es un sistema profesional e independiente de gestión, documentación, diseño y visualización de redes de fibra óptica (FTTH/GPON/XGS-PON).
+Sistema de gestión, diseño y visualización de redes de fibra óptica.
 
-## Requisitos
+## Ejecutar con Docker
 
-- Node.js (v20+)
-- Docker y Docker Compose
-- PostgreSQL 15 + PostGIS (vía Docker)
+Desde esta carpeta, con Docker Desktop iniciado:
 
-## Inicio Rápido (Fase 1)
+```bash
+docker compose up -d --build
+docker compose exec backend npx prisma db push --skip-generate
+docker compose exec backend npm run seed
+```
 
-1. Iniciar infraestructura (Base de datos, Redis, MinIO):
-   ```bash
-   docker compose up -d
-   ```
+Aplicación: http://localhost:5173
+API: http://localhost:3000
+Usuario inicial: `admin@fibermap.local`, contraseña: `Admin123!`.
+El seed conserva los usuarios existentes. Cambia la contraseña después del primer acceso.
 
-2. Configurar variables de entorno:
-   Copiar `.env.example` a `backend/.env` y `frontend/.env`.
+El backend se compila en la imagen. Los comandos de inicialización del esquema y seed son solo para una base nueva; omítelos si restauraste un respaldo. El arranque no modifica el esquema de la base restaurada. PostgreSQL/PostGIS y Redis conservan sus datos en volúmenes Docker.
 
-3. Instalar dependencias e iniciar el backend:
-   ```bash
-   cd backend
-   npm install
-   npx prisma generate
-   npx prisma migrate dev
-   npm run start:dev
-   ```
+```bash
+docker compose logs -f backend
+docker compose stop
+docker compose up -d
+```
 
-4. Instalar dependencias e iniciar el frontend:
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
+Después de cambiar código, ejecuta `docker compose up -d --build`.
 
-## Arquitectura Base
-- **Backend**: NestJS, Prisma, PostgreSQL + PostGIS.
-- **Frontend**: React, Vite, MapLibre GL JS, Zustand.
-- **Infraestructura**: Docker (MinIO, Redis).
+MinIO es opcional y la aplicación actual no lo utiliza. Está bajo el perfil `storage`: `docker compose --profile storage up -d`. Su registro actualmente rechaza la descarga con HTTP 401; no es necesario para iniciar la aplicación.
+
+## Arquitectura
+
+- Backend: NestJS, Prisma, PostgreSQL y PostGIS.
+- Frontend: React, Vite y MapLibre GL JS.
+- Infraestructura: Docker Compose y Redis.
+

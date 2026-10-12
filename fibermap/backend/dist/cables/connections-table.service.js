@@ -7,6 +7,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+import { isNormalManga } from '../domain/network-rules.js';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 export const MAX_FIBERS_PER_PORT = 2;
@@ -15,7 +16,7 @@ let ConnectionsTableService = class ConnectionsTableService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async build(elementType, elementId, odfCapacity) {
+    async build(elementType, elementId, odfCapacity, showFullInventory = false) {
         const boxSide = elementType === 'ODF' ? null : await this.boxTerminals(elementId);
         const links = await this.prisma.cableConnection.findMany({
             where: { elementType, elementId, cable: { deletedAt: null } },
@@ -39,7 +40,7 @@ let ConnectionsTableService = class ConnectionsTableService {
                 number: tube.number,
                 color: tube.color,
                 fibers: tube.fibers
-                    .filter((fiber) => fiber.number >= link.fiberFrom && fiber.number <= link.fiberTo)
+                    .filter((fiber) => showFullInventory || (fiber.number >= link.fiberFrom && fiber.number <= link.fiberTo))
                     .map((fiber) => ({
                     id: fiber.id,
                     number: fiber.number,
@@ -69,7 +70,7 @@ let ConnectionsTableService = class ConnectionsTableService {
         const portsInUse = nextPort - 1;
         if (boxSide) {
             await this.attachRemote(elementType, elementId, cables, boxSide.terminals);
-            return { portsInUse, cables, terminals: boxSide.terminals };
+            return { portsInUse: boxSide.terminals.filter((terminal) => terminal.fibers.length > 0).length, cables, terminals: boxSide.terminals };
         }
         const odfLinks = await this.prisma.opticalConnection.findMany({
             where: { deletedAt: null, sourceTermination: { entityType: 'FIBER', odfId: elementId }, targetTermination: { entityType: 'ODF_PORT' } },
@@ -102,7 +103,7 @@ let ConnectionsTableService = class ConnectionsTableService {
             for (const buffer of cable.buffers) {
                 for (const fiber of buffer.fibers) {
                     const explicit = explicitPort.get(fiber.id);
-                    const port = explicit?.port ?? ((explicitPerPort.get(fiber.port) ?? 0) < MAX_FIBERS_PER_PORT ? fiber.port : null);
+                    const port = explicit?.port ?? null;
                     fiber.links = port ? [`Puerto ${port}`] : [];
                     if (!port)
                         continue;
@@ -113,7 +114,7 @@ let ConnectionsTableService = class ConnectionsTableService {
             }
         }
         await this.attachRemote(elementType, elementId, cables, terminals);
-        return { portsInUse, cables, terminals };
+        return { portsInUse: terminals.filter((terminal) => terminal.fibers.length > 0).length, cables, terminals };
     }
     async attachRemote(elementType, elementId, cables, terminals) {
         if (cables.length === 0)
@@ -223,7 +224,7 @@ let ConnectionsTableService = class ConnectionsTableService {
         const terminals = [];
         const byKey = new Map();
         const add = (terminal) => { terminals.push(terminal); byKey.set(terminal.key, terminal); };
-        for (const splitter of splitters) {
+        for (const splitter of isNormalManga(box?.mangaType) ? [] : splitters) {
             for (const port of splitter.ports) {
                 const isInput = port.portType === 'INPUT';
                 if (isInput && !linkedEntities.has(port.id))
@@ -239,17 +240,8 @@ let ConnectionsTableService = class ConnectionsTableService {
                 });
             }
         }
-        for (const port of ports) {
+        for (const port of isNormalManga(box?.mangaType) ? [] : ports) {
             add({ key: `BOX_PORT:${port.id}`, group: 'Puertos de la caja', label: boxPortLabel(port), status: port.status, fibers: [], peers: [], remote: [] });
-        }
-        if (box?.type === 'MANGA' && box.mangaType !== 'DISTRIBUCION') {
-            const existing = new Set(ports.map((port) => port.number));
-            for (let number = 1; number <= (box.capacity ?? 0); number++) {
-                if (existing.has(number))
-                    continue;
-                add({ key: `BOX_PORT_NUMBER:${number}`, group: 'Puertos de empalme', label: `Puerto ${number}`, status: 'FREE', fibers: [], peers: [], remote: [] });
-            }
-            terminals.sort((a, b) => portNumberOf(a) - portNumberOf(b));
         }
         const linksByFiber = new Map();
         const attach = (terminal, fiber, linkId) => {
@@ -264,6 +256,23 @@ let ConnectionsTableService = class ConnectionsTableService {
             linksByFiber.set(fiber.id, links);
         };
         for (const connection of connections) {
+            if (isNormalManga(box?.mangaType) && ['FIBER', 'FIBER_IN'].includes(connection.sourceTermination.entityType) && ['FIBER', 'FIBER_OUT'].includes(connection.targetTermination.entityType)) {
+                const a = connection.sourceFiber;
+                const b = connection.targetFiber;
+                if (a && b) {
+                    const splice = { key: `${connection.sourceTermination.entityType === 'FIBER_IN' ? 'MAPPING' : 'SPLICE'}:${connection.id}`, group: 'Empalmes', label: 'Empalme entre hilos', status: 'USED', fibers: [], peers: [], remote: [] };
+                    attach(splice, a, connection.id);
+                    if (a.id === b.id) {
+                        splice.fibers.push({ ...splice.fibers[0] });
+                    }
+                    else
+                        attach(splice, b, connection.id);
+                    terminals.push(splice);
+                    linksByFiber.set(a.id, [`${b.cable.cable.code} · hilo ${b.number}`]);
+                    linksByFiber.set(b.id, [`${a.cable.cable.code} · hilo ${a.number}`]);
+                }
+                continue;
+            }
             const source = byKey.get(`${connection.sourceTermination.entityType}:${connection.sourceTermination.entityId}`);
             const target = byKey.get(`${connection.targetTermination.entityType}:${connection.targetTermination.entityId}`);
             attach(source, connection.sourceFiber);

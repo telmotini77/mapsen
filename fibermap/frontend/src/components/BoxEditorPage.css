@@ -386,3 +386,17 @@
 .splitter-delete:hover:not(:disabled) { background: rgba(248, 113, 113, .12); }
 .splitter-delete:disabled { opacity: .45; cursor: not-allowed; }
 .splitter-add .splitter-expand { margin-left: 0; margin-right: .5rem; }
+
+.box-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.port-fiber-chip {
+  display: inline-block;
+  padding: 0.05rem 0.45rem;
+  border-radius: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}

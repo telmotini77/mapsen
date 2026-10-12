@@ -7,17 +7,20 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+import { OpticalConnectionsService } from '../optical-connections/optical-connections.service.js';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PolesService } from '../poles/poles.service.js';
-import { CENTER_TOLERANCE_METERS, cableTypeFor, defaultCableColor, DEFAULT_CABLE_CONNECTION, POLE_VERTEX_TOLERANCE_METERS, fiberColorAt, tubeLayout, } from '../domain/network-rules.js';
+import { CENTER_TOLERANCE_METERS, cableTypeFor, defaultCableColor, DEFAULT_CABLE_CONNECTION, defaultFiberRanges, POLE_VERTEX_TOLERANCE_METERS, fiberColorAt, tubeLayout, } from '../domain/network-rules.js';
 import { connectionsFromPath, nearestWithin, snapPathToElements, } from './cable-geometry.js';
 let CablesService = class CablesService {
     prisma;
     poles;
-    constructor(prisma, poles) {
+    opticalConnections;
+    constructor(prisma, poles, opticalConnections) {
         this.prisma = prisma;
         this.poles = poles;
+        this.opticalConnections = opticalConnections;
     }
     async resolveProjectId() {
         let project = await this.prisma.project.findFirst();
@@ -157,42 +160,40 @@ let CablesService = class CablesService {
     async syncConnections(cableId, fiberCount, wanted) {
         const existing = await this.prisma.cableConnection.findMany({ where: { cableId } });
         const keyOf = (type, id) => `${type}:${id}`;
-        const wantedByKey = new Map(wanted.map((c) => [keyOf(c.element.kind, c.element.id), c]));
-        const existingKeys = new Set(existing.map((c) => keyOf(c.elementType, c.elementId)));
+        const wantedKeys = new Set(wanted.map((c) => keyOf(c.element.kind, c.element.id)));
+        const existingByKey = new Map(existing.map((c) => [keyOf(c.elementType, c.elementId), c]));
+        const ordered = [...wanted].sort((a, b) => a.sequence - b.sequence);
+        const ranges = defaultFiberRanges(ordered.map((c) => {
+            const current = existingByKey.get(keyOf(c.element.kind, c.element.id));
+            return { kind: c.element.kind, existing: current && { fiberFrom: current.fiberFrom, fiberTo: current.fiberTo } };
+        }), fiberCount);
         await this.prisma.$transaction([
             ...existing
-                .filter((c) => !wantedByKey.has(keyOf(c.elementType, c.elementId)))
+                .filter((c) => !wantedKeys.has(keyOf(c.elementType, c.elementId)))
                 .map((c) => this.prisma.cableConnection.delete({ where: { id: c.id } })),
-            ...existing
-                .filter((c) => wantedByKey.has(keyOf(c.elementType, c.elementId)))
-                .map((c) => {
-                const target = wantedByKey.get(keyOf(c.elementType, c.elementId));
-                return this.prisma.cableConnection.update({
-                    where: { id: c.id },
+            ...ordered.map((c, index) => {
+                const current = existingByKey.get(keyOf(c.element.kind, c.element.id));
+                if (current) {
+                    return this.prisma.cableConnection.update({
+                        where: { id: current.id },
+                        data: { sequence: c.sequence, role: c.role, ...ranges[index] },
+                    });
+                }
+                return this.prisma.cableConnection.create({
                     data: {
-                        sequence: target.sequence,
-                        role: target.role,
-                        fiberFrom: Math.min(c.fiberFrom, fiberCount),
-                        fiberTo: Math.min(c.fiberTo, fiberCount),
+                        cableId,
+                        sequence: c.sequence,
+                        elementType: c.element.kind,
+                        elementId: c.element.id,
+                        role: c.role,
+                        connectionType: DEFAULT_CABLE_CONNECTION.connectionType,
+                        ...ranges[index],
+                        lossDb: DEFAULT_CABLE_CONNECTION.lossDb,
                     },
                 });
             }),
-            ...wanted
-                .filter((c) => !existingKeys.has(keyOf(c.element.kind, c.element.id)))
-                .map((c) => this.prisma.cableConnection.create({
-                data: {
-                    cableId,
-                    sequence: c.sequence,
-                    elementType: c.element.kind,
-                    elementId: c.element.id,
-                    role: c.role,
-                    connectionType: DEFAULT_CABLE_CONNECTION.connectionType,
-                    fiberFrom: 1,
-                    fiberTo: fiberCount,
-                    lossDb: DEFAULT_CABLE_CONNECTION.lossDb,
-                },
-            })),
         ]);
+        await this.opticalConnections.assignCablePorts(cableId);
     }
     async connectionsByCable(cableIds) {
         const rows = cableIds.length
@@ -529,7 +530,7 @@ let CablesService = class CablesService {
 };
 CablesService = __decorate([
     Injectable(),
-    __metadata("design:paramtypes", [PrismaService, PolesService])
+    __metadata("design:paramtypes", [PrismaService, PolesService, OpticalConnectionsService])
 ], CablesService);
 export { CablesService };
 //# sourceMappingURL=cables.service.js.map

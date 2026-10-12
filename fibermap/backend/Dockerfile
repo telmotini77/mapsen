@@ -4,13 +4,16 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install
+RUN npm ci
 
 COPY . .
 
 # Generate Prisma client
-RUN npx prisma generate
+RUN npx prisma generate && npm run build
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start:dev"]
+CMD ["node", "dist/main.js"]
+
+
+

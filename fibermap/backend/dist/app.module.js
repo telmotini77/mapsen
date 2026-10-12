@@ -33,11 +33,12 @@ import { UsersModule } from './users/users.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { HealthController } from './health/health.controller.js';
 import { PolesModule } from './poles/poles.module.js';
+import { TraceModule } from './trace/trace.module.js';
 let AppModule = class AppModule {
 };
 AppModule = __decorate([
     Module({
-        imports: [GisModule, ProjectsModule, RegionsModule, ZonesModule, BoxesModule, OdfsModule, InventoryModule, CablesModule, TubesModule, FibersModule, SplittersModule, OpticalConnectionsModule, PrismaModule, OpticalContinuityEngineModule, OpticalTopologyValidatorModule, AuthModule, UsersModule, CustomersModule, PolesModule],
+        imports: [GisModule, ProjectsModule, RegionsModule, ZonesModule, BoxesModule, OdfsModule, InventoryModule, CablesModule, TubesModule, FibersModule, SplittersModule, OpticalConnectionsModule, PrismaModule, OpticalContinuityEngineModule, OpticalTopologyValidatorModule, AuthModule, UsersModule, CustomersModule, PolesModule, TraceModule],
         controllers: [AppController, HealthController],
         providers: [AppService, InfrastructureValidatorService, BoxCapacityService, OpticalContinuityEngineService, OpticalTopologyValidatorService, CableCapacityService, FiberColorService],
     })

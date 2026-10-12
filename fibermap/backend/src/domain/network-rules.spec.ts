@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CABLE_FIBER_COUNTS, DEFAULT_CABLE_COLOR, cableTypeFor, defaultCableColor, fiberColorAt, tubeLayout } from './network-rules.js';
+import { CABLE_FIBER_COUNTS, DEFAULT_CABLE_COLOR, cableTypeFor, defaultCableColor, defaultFiberRanges, fiberColorAt, tubeLayout } from './network-rules.js';
 
 describe('color estándar de la fibra por cantidad de hilos', () => {
   it('2 negro, 6 rosado, 12 azul, 24 verde, 48 café', () => {
@@ -37,5 +37,47 @@ describe('color estándar de la fibra por cantidad de hilos', () => {
     expect([1, 2, 3, 4, 5, 6, 7, 12, 13].map(fiberColorAt)).toEqual(
       ['BLUE', 'ORANGE', 'GREEN', 'BROWN', 'SLATE', 'WHITE', 'RED', 'AQUA', 'BLUE'],
     );
+  });
+});
+
+describe('hilos por defecto de cada dispositivo de una fibra', () => {
+  it('de manga a caja NAP: la NAP recibe un solo hilo', () => {
+    expect(defaultFiberRanges([{ kind: 'MANGA' }, { kind: 'NAP' }], 12)).toEqual([
+      { fiberFrom: 1, fiberTo: 12 },
+      { fiberFrom: 1, fiberTo: 1 },
+    ]);
+  });
+
+  it('de caja NAP a manga: la NAP recibe un hilo y la manga todos', () => {
+    expect(defaultFiberRanges([{ kind: 'NAP' }, { kind: 'MANGA' }], 12)).toEqual([
+      { fiberFrom: 1, fiberTo: 1 },
+      { fiberFrom: 1, fiberTo: 12 },
+    ]);
+  });
+
+  it('de manga de distribución a manga de paso: todos los hilos', () => {
+    expect(defaultFiberRanges([{ kind: 'MANGA' }, { kind: 'MANGA' }], 24)).toEqual([
+      { fiberFrom: 1, fiberTo: 24 },
+      { fiberFrom: 1, fiberTo: 24 },
+    ]);
+  });
+
+  it('si antes dejó hilos en cajas NAP, la manga siguiente solo recibe los disponibles', () => {
+    expect(defaultFiberRanges([{ kind: 'MANGA' }, { kind: 'NAP' }, { kind: 'NAP' }, { kind: 'MANGA' }, { kind: 'NAP' }], 12)).toEqual([
+      { fiberFrom: 1, fiberTo: 12 },
+      { fiberFrom: 1, fiberTo: 1 },
+      { fiberFrom: 2, fiberTo: 2 },
+      { fiberFrom: 3, fiberTo: 12 },
+      { fiberFrom: 3, fiberTo: 3 },
+    ]);
+  });
+
+  it('respeta los rangos ya guardados y los toma en cuenta para los nuevos', () => {
+    expect(defaultFiberRanges([{ kind: 'MANGA', existing: { fiberFrom: 1, fiberTo: 12 } }, { kind: 'NAP', existing: { fiberFrom: 5, fiberTo: 5 } }, { kind: 'NAP' }, { kind: 'MANGA' }], 12)).toEqual([
+      { fiberFrom: 1, fiberTo: 12 },
+      { fiberFrom: 5, fiberTo: 5 },
+      { fiberFrom: 1, fiberTo: 1 },
+      { fiberFrom: 6, fiberTo: 12 },
+    ]);
   });
 });

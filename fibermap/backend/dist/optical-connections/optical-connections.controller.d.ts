@@ -1,3 +1,4 @@
+import { SetNormalMappingDto } from './dto/set-normal-mapping.dto.js';
 import { OpticalConnectionsService } from './optical-connections.service.js';
 import { CreateOpticalConnectionDto } from './dto/create-optical-connection.dto.js';
 import { UpdateOpticalConnectionDto } from './dto/update-optical-connection.dto.js';
@@ -94,6 +95,24 @@ export declare class OpticalConnectionsController {
             label: string | null;
         } | null;
     } & {
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        notes: string | null;
+        connectionType: string;
+        lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        version: number;
+        sourceTerminationId: string;
+        targetTerminationId: string;
+        sourceFiberId: string | null;
+        targetFiberId: string | null;
+        spliceMethod: string | null;
+        technician: string | null;
+        splicedAt: Date | null;
+    }>;
+    setNormalMapping(dto: SetNormalMappingDto): Promise<{
         status: string;
         id: string;
         createdAt: Date;

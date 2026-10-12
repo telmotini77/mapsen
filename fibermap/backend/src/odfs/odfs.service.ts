@@ -59,7 +59,7 @@ export class OdfsService {
   // OdfPort real. El servicio es la etiqueta del hilo; sin etiqueta, su estado.
   async table(id: string) {
     const odf = await this.findOne(id);
-    const { portsInUse, cables, terminals } = await this.connectionsTable.build('ODF', id, odf.capacity);
+    const { portsInUse, cables, terminals } = await this.connectionsTable.build('ODF', id, odf.capacity, true);
     return {
       device: { id: odf.id, kind: 'ODF' as const, code: odf.code, name: odf.name, capacity: odf.capacity, status: odf.status },
       portsInUse,

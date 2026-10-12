@@ -1,3 +1,4 @@
+import { isNormalManga } from '../domain/network-rules.js';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateBoxDto, UpdateBoxDto } from './dto/create-box.dto.js';
@@ -123,7 +124,7 @@ export class BoxesService {
     const box = await this.prisma.box.findUnique({
       where: { id },
       include: {
-        ports: true,
+        ports: { where: { deletedAt: null } },
         splitters: {
           where: { deletedAt: null },
           include: { ports: true }
@@ -141,6 +142,14 @@ export class BoxesService {
 
     if ((dto.mangaType !== undefined || dto.capacity !== undefined) && box.type !== 'MANGA') {
       throw new BadRequestException('El tipo de manga y los hilos solo aplican a mangas');
+    }
+    if (isNormalManga(dto.mangaType) && !isNormalManga(box.mangaType)) {
+      const occupied = await this.prisma.boxPort.count({ where: { boxId: id, deletedAt: null, status: { not: 'FREE' } } });
+      if (occupied) throw new BadRequestException('Libera los puertos de esta manga antes de convertirla a distribución normal.');
+    }
+    if (isNormalManga(box.mangaType) && dto.mangaType && !isNormalManga(dto.mangaType)) {
+      const splices = await this.prisma.opticalConnection.count({ where: { deletedAt: null, sourceTermination: { boxId: id, entityType: 'FIBER' }, targetTermination: { entityType: 'FIBER' } } });
+      if (splices) throw new BadRequestException('Quita los empalmes directos antes de cambiar la categoría de esta manga.');
     }
     // Al dejar de ser de distribución, su splitter (que se creó solo) se retira si no tiene puertos en uso.
     if (dto.mangaType && dto.mangaType !== 'DISTRIBUCION' && box.mangaType === 'DISTRIBUCION') {
@@ -168,6 +177,7 @@ export class BoxesService {
     });
 
     // Al pasar a manga de distribución, su splitter primario nace solo.
+    if (isNormalManga(dto.mangaType)) await this.prisma.boxPort.updateMany({ where: { boxId: id, deletedAt: null }, data: { deletedAt: new Date() } });
     if (dto.mangaType === 'DISTRIBUCION' && box.mangaType !== 'DISTRIBUCION') await this.ensureSplitter(updated);
 
     if (dto.latitude !== undefined && dto.longitude !== undefined) {
@@ -193,7 +203,7 @@ export class BoxesService {
   async table(id: string) {
     const box = await this.findOne(id);
     if (box.type !== 'MANGA' && box.type !== 'NAP') throw new NotFoundException('Solo las mangas y las cajas NAP tienen tabla de conexiones');
-    const { portsInUse, cables, terminals } = await this.connectionsTable.build(box.type as 'MANGA' | 'NAP', id);
+    const { portsInUse, cables, terminals } = await this.connectionsTable.build(box.type as 'MANGA' | 'NAP', id, null, true);
     return {
       device: {
         id: box.id,
@@ -214,6 +224,7 @@ export class BoxesService {
     const box = await this.prisma.box.findUnique({ where: { id }, include: { ports: true } });
     if (!box || box.deletedAt) throw new NotFoundException('Caja no encontrada');
 
+    if (isNormalManga(box.mangaType)) throw new BadRequestException('Una manga normal, de paso o de empalme une hilos directamente y no tiene puertos.');
     const startNumber = box.ports.length;
     const newPorts = Array.from({ length: count }, (_, i) => ({
       boxId: id,

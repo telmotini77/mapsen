@@ -1,3 +1,4 @@
+import { OpticalConnectionsService } from '../optical-connections/optical-connections.service.js';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PolesService } from '../poles/poles.service.js';
@@ -10,6 +11,7 @@ import {
   cableTypeFor,
   defaultCableColor,
   DEFAULT_CABLE_CONNECTION,
+  defaultFiberRanges,
   POLE_VERTEX_TOLERANCE_METERS,
   fiberColorAt,
   tubeLayout,
@@ -25,7 +27,7 @@ import {
 
 @Injectable()
 export class CablesService {
-  constructor(private prisma: PrismaService, private poles: PolesService) {}
+  constructor(private prisma: PrismaService, private poles: PolesService, private opticalConnections: OpticalConnectionsService) {}
 
   private async resolveProjectId(): Promise<string> {
     let project = await this.prisma.project.findFirst();
@@ -193,49 +195,50 @@ export class CablesService {
   }
 
   // Crea, actualiza o elimina las conexiones de la fibra según los dispositivos que atraviesa.
-  // Las conexiones que ya existían conservan la configuración que el usuario les dio.
+  // Las conexiones que ya existían conservan la configuración que el usuario les dio; las nuevas
+  // reciben los hilos por defecto (ver defaultFiberRanges: una NAP toma un hilo y una manga que viene
+  // después de dejar hilos en NAPs solo recibe los disponibles).
   private async syncConnections(cableId: string, fiberCount: number, wanted: ConnectionPoint[]) {
     const existing = await this.prisma.cableConnection.findMany({ where: { cableId } });
     const keyOf = (type: string, id: string) => `${type}:${id}`;
-    const wantedByKey = new Map(wanted.map((c) => [keyOf(c.element.kind, c.element.id), c]));
-    const existingKeys = new Set(existing.map((c) => keyOf(c.elementType, c.elementId)));
+    const wantedKeys = new Set(wanted.map((c) => keyOf(c.element.kind, c.element.id)));
+    const existingByKey = new Map(existing.map((c) => [keyOf(c.elementType, c.elementId), c]));
+    const ordered = [...wanted].sort((a, b) => a.sequence - b.sequence);
+    const ranges = defaultFiberRanges(
+      ordered.map((c) => {
+        const current = existingByKey.get(keyOf(c.element.kind, c.element.id));
+        return { kind: c.element.kind, existing: current && { fiberFrom: current.fiberFrom, fiberTo: current.fiberTo } };
+      }),
+      fiberCount,
+    );
 
     await this.prisma.$transaction([
       ...existing
-        .filter((c) => !wantedByKey.has(keyOf(c.elementType, c.elementId)))
+        .filter((c) => !wantedKeys.has(keyOf(c.elementType, c.elementId)))
         .map((c) => this.prisma.cableConnection.delete({ where: { id: c.id } })),
-      ...existing
-        .filter((c) => wantedByKey.has(keyOf(c.elementType, c.elementId)))
-        .map((c) => {
-          const target = wantedByKey.get(keyOf(c.elementType, c.elementId))!;
+      ...ordered.map((c, index) => {
+        const current = existingByKey.get(keyOf(c.element.kind, c.element.id));
+        if (current) {
           return this.prisma.cableConnection.update({
-            where: { id: c.id },
-            data: {
-              sequence: target.sequence,
-              role: target.role,
-              fiberFrom: Math.min(c.fiberFrom, fiberCount),
-              fiberTo: Math.min(c.fiberTo, fiberCount),
-            },
+            where: { id: current.id },
+            data: { sequence: c.sequence, role: c.role, ...ranges[index] },
           });
-        }),
-      ...wanted
-        .filter((c) => !existingKeys.has(keyOf(c.element.kind, c.element.id)))
-        .map((c) =>
-          this.prisma.cableConnection.create({
-            data: {
-              cableId,
-              sequence: c.sequence,
-              elementType: c.element.kind,
-              elementId: c.element.id,
-              role: c.role,
-              connectionType: DEFAULT_CABLE_CONNECTION.connectionType,
-              fiberFrom: 1,
-              fiberTo: fiberCount,
-              lossDb: DEFAULT_CABLE_CONNECTION.lossDb,
-            },
-          }),
-        ),
+        }
+        return this.prisma.cableConnection.create({
+          data: {
+            cableId,
+            sequence: c.sequence,
+            elementType: c.element.kind,
+            elementId: c.element.id,
+            role: c.role,
+            connectionType: DEFAULT_CABLE_CONNECTION.connectionType,
+            ...ranges[index],
+            lossDb: DEFAULT_CABLE_CONNECTION.lossDb,
+          },
+        });
+      }),
     ]);
+    await this.opticalConnections.assignCablePorts(cableId);
   }
 
   // Conexiones de cada fibra con los datos del dispositivo (nombre, tipo, ubicación).

@@ -1,3 +1,4 @@
+import { SetNormalMappingDto } from './dto/set-normal-mapping.dto.js';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException } from '@nestjs/common';
 import { OpticalConnectionsService } from './optical-connections.service.js';
 import { CreateOpticalConnectionDto } from './dto/create-optical-connection.dto.js';
@@ -17,6 +18,11 @@ export class OpticalConnectionsController {
   @Post('fiber-link')
   createFiberLink(@Body() dto: CreateFiberLinkDto) {
     return this.opticalConnectionsService.createFiberLink(dto);
+  }
+
+  @Post('normal-mapping')
+  setNormalMapping(@Body() dto: SetNormalMappingDto) {
+    return this.opticalConnectionsService.setNormalMapping(dto);
   }
 
   @Get()

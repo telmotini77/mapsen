@@ -64,7 +64,7 @@ export interface ConnectionsTableCable {
 export declare class ConnectionsTableService {
     private readonly prisma;
     constructor(prisma: PrismaService);
-    build(elementType: 'ODF' | 'MANGA' | 'NAP', elementId: string, odfCapacity?: number | null): Promise<{
+    build(elementType: 'ODF' | 'MANGA' | 'NAP', elementId: string, odfCapacity?: number | null, showFullInventory?: boolean): Promise<{
         portsInUse: number;
         cables: ConnectionsTableCable[];
         terminals: DeviceTerminal[];

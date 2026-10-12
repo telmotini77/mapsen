@@ -19,7 +19,7 @@ export class OpticalTopologyValidatorService {
       WITH RECURSIVE trace AS (
         SELECT id, "sourceTerminationId", "targetTerminationId", ARRAY[id::text] as path_ids
         FROM optical_connections
-        WHERE "sourceTerminationId" = ${targetTerminationId} OR "targetTerminationId" = ${targetTerminationId}
+        WHERE "deletedAt" IS NULL AND ("sourceTerminationId" = ${targetTerminationId} OR "targetTerminationId" = ${targetTerminationId})
 
         UNION ALL
 
@@ -30,7 +30,7 @@ export class OpticalTopologyValidatorService {
            c."targetTerminationId" = t."sourceTerminationId" OR
            c."sourceTerminationId" = t."sourceTerminationId" OR
            c."targetTerminationId" = t."targetTerminationId")
-        WHERE NOT (c.id::text = ANY(t.path_ids))
+        WHERE c."deletedAt" IS NULL AND NOT (c.id::text = ANY(t.path_ids))
       )
       SELECT 1 FROM trace 
       WHERE "sourceTerminationId" = ${sourceTerminationId} OR "targetTerminationId" = ${sourceTerminationId}
@@ -51,8 +51,8 @@ export class OpticalTopologyValidatorService {
     const term = await this.prisma.opticalTermination.findUnique({
       where: { id: terminationId },
       include: {
-        sourceConnections: { where: { status: 'ACTIVE' } },
-        targetConnections: { where: { status: 'ACTIVE' } }
+        sourceConnections: { where: { status: 'ACTIVE', deletedAt: null } },
+        targetConnections: { where: { status: 'ACTIVE', deletedAt: null } }
       }
     });
 

@@ -1,3 +1,4 @@
+import { isNormalManga } from '../domain/network-rules.js';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -100,6 +101,7 @@ export class ConnectionsTableService {
     elementType: 'ODF' | 'MANGA' | 'NAP',
     elementId: string,
     odfCapacity?: number | null,
+    showFullInventory = false,
   ): Promise<{ portsInUse: number; cables: ConnectionsTableCable[]; terminals: DeviceTerminal[] }> {
     // Manga / NAP: las fusiones del Editor de Conexiones dicen a qué puerto llega cada hilo.
     const boxSide = elementType === 'ODF' ? null : await this.boxTerminals(elementId);
@@ -128,7 +130,7 @@ export class ConnectionsTableService {
           number: tube.number,
           color: tube.color,
           fibers: tube.fibers
-            .filter((fiber) => fiber.number >= link.fiberFrom && fiber.number <= link.fiberTo)
+            .filter((fiber) => showFullInventory || (fiber.number >= link.fiberFrom && fiber.number <= link.fiberTo))
             .map((fiber) => ({
               id: fiber.id,
               number: fiber.number,
@@ -159,7 +161,7 @@ export class ConnectionsTableService {
     const portsInUse = nextPort - 1;
     if (boxSide) {
       await this.attachRemote(elementType, elementId, cables, boxSide.terminals);
-      return { portsInUse, cables, terminals: boxSide.terminals };
+      return { portsInUse: boxSide.terminals.filter((terminal) => terminal.fibers.length > 0).length, cables, terminals: boxSide.terminals };
     }
 
     // ODF: los enlaces hechos a mano (hilo → puerto) mandan; el resto de hilos llega por defecto al
@@ -194,7 +196,7 @@ export class ConnectionsTableService {
         for (const fiber of buffer.fibers) {
           const explicit = explicitPort.get(fiber.id);
           // Sin enlace propio, el hilo n queda en el puerto n mientras a ese puerto le quede un lado libre.
-          const port = explicit?.port ?? ((explicitPerPort.get(fiber.port) ?? 0) < MAX_FIBERS_PER_PORT ? fiber.port : null);
+          const port = explicit?.port ?? null;
           fiber.links = port ? [`Puerto ${port}`] : [];
           if (!port) continue;
           const terminal = terminals[port - 1];
@@ -204,7 +206,7 @@ export class ConnectionsTableService {
       }
     }
     await this.attachRemote(elementType, elementId, cables, terminals);
-    return { portsInUse, cables, terminals };
+    return { portsInUse: terminals.filter((terminal) => terminal.fibers.length > 0).length, cables, terminals };
   }
 
   // Completa `cable.devices` (a qué otros dispositivos llega cada fibra) y `terminal.remote` (a qué
@@ -326,7 +328,7 @@ export class ConnectionsTableService {
     const terminals: DeviceTerminal[] = [];
     const byKey = new Map<string, DeviceTerminal>();
     const add = (terminal: DeviceTerminal) => { terminals.push(terminal); byKey.set(terminal.key, terminal); };
-    for (const splitter of splitters) {
+    for (const splitter of isNormalManga(box?.mangaType) ? [] : splitters) {
       // INPUT va antes que OUTPUT por orden alfabético.
       for (const port of splitter.ports) {
         const isInput = port.portType === 'INPUT';
@@ -346,20 +348,9 @@ export class ConnectionsTableService {
         });
       }
     }
-    for (const port of ports) {
+    for (const port of isNormalManga(box?.mangaType) ? [] : ports) {
       add({ key: `BOX_PORT:${port.id}`, group: 'Puertos de la caja', label: boxPortLabel(port), status: port.status, fibers: [], peers: [], remote: [] });
     }
-    // Una manga de paso o de empalme no tiene splitter: sus puertos son las posiciones de empalme, una
-    // por hilo que maneja. Los que todavía no existen se crean al conectar el primer hilo.
-    if (box?.type === 'MANGA' && box.mangaType !== 'DISTRIBUCION') {
-      const existing = new Set(ports.map((port) => port.number));
-      for (let number = 1; number <= (box.capacity ?? 0); number++) {
-        if (existing.has(number)) continue;
-        add({ key: `BOX_PORT_NUMBER:${number}`, group: 'Puertos de empalme', label: `Puerto ${number}`, status: 'FREE', fibers: [], peers: [], remote: [] });
-      }
-      terminals.sort((a, b) => portNumberOf(a) - portNumberOf(b));
-    }
-
     const linksByFiber = new Map<string, string[]>();
     type Fiberish = { id: string; number: number; color: string; cable: { cableId: string; cable: { code: string } } } | null;
     const attach = (terminal: DeviceTerminal | undefined, fiber: Fiberish, linkId?: string) => {
@@ -372,6 +363,22 @@ export class ConnectionsTableService {
       linksByFiber.set(fiber.id, links);
     };
     for (const connection of connections) {
+      if (isNormalManga(box?.mangaType) && ['FIBER', 'FIBER_IN'].includes(connection.sourceTermination.entityType) && ['FIBER', 'FIBER_OUT'].includes(connection.targetTermination.entityType)) {
+        const a = connection.sourceFiber;
+        const b = connection.targetFiber;
+        if (a && b) {
+          // Agrupación de empalme para el seguimiento de continuidad, sin puerto físico.
+          const splice: DeviceTerminal = { key: `${connection.sourceTermination.entityType === 'FIBER_IN' ? 'MAPPING' : 'SPLICE'}:${connection.id}`, group: 'Empalmes', label: 'Empalme entre hilos', status: 'USED', fibers: [], peers: [], remote: [] };
+          attach(splice, a, connection.id);
+          if (a.id === b.id) {
+            splice.fibers.push({ ...splice.fibers[0] });
+          } else attach(splice, b, connection.id);
+          terminals.push(splice);
+          linksByFiber.set(a.id, [`${b.cable.cable.code} · hilo ${b.number}`]);
+          linksByFiber.set(b.id, [`${a.cable.cable.code} · hilo ${a.number}`]);
+        }
+        continue;
+      }
       const source = byKey.get(`${connection.sourceTermination.entityType}:${connection.sourceTermination.entityId}`);
       const target = byKey.get(`${connection.targetTermination.entityType}:${connection.targetTermination.entityId}`);
       attach(source, connection.sourceFiber);

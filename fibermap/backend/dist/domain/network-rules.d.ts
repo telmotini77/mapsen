@@ -1,6 +1,6 @@
 export declare const FIBER_COUNTS: readonly [6, 12, 24, 48];
 export declare const BOX_TYPES: readonly ["NAP", "MANGA"];
-export declare const MANGA_TYPES: readonly ["DISTRIBUCION", "PASO", "EMPALME"];
+export declare const MANGA_TYPES: readonly ["DISTRIBUCION", "DISTRIBUCION_NORMAL", "PASO", "EMPALME"];
 export declare const SPLITTER_RATIOS: readonly ["1:8", "1:16"];
 export declare const MANGA_SPLITTER_RATIO = "1:8";
 export declare const NAP_SPLITTER_RATIOS: readonly string[];
@@ -25,3 +25,15 @@ export declare const DEFAULT_CABLE_CONNECTION: {
     readonly connectionType: "SPLICE";
     readonly lossDb: 0.1;
 };
+export interface FiberStop {
+    kind: 'ODF' | 'MANGA' | 'NAP';
+    existing?: {
+        fiberFrom: number;
+        fiberTo: number;
+    };
+}
+export declare function defaultFiberRanges(stops: FiberStop[], fiberCount: number): {
+    fiberFrom: number;
+    fiberTo: number;
+}[];
+export declare const isNormalManga: (type?: string | null) => boolean;

@@ -27,9 +27,10 @@ export const CABLE_FIBER_COUNTS = [2, 6, 12, 24, 48];
 export const fiberCountLabel = (count: number) => (count === 2 ? '2 hilos (DROP)' : `${count} hilos`);
 
 export const MANGA_TYPES = [
-  { value: 'DISTRIBUCION', label: 'Distribución', help: 'Reparte la señal de nodo a nodo y hacia las cajas NAP, con splitters primarios 1:8.' },
-  { value: 'PASO', label: 'De paso', help: 'Solo pasa la fibra de un nodo a otro, sin dividir la señal.' },
-  { value: 'EMPALME', label: 'De empalme', help: 'Une tramos de fibra reparados después de una ruptura.' },
+  { value: 'DISTRIBUCION', label: 'Distribución · Primario', help: 'Reparte la señal de nodo a nodo y hacia las cajas NAP, con splitters primarios 1:8.' },
+  { value: 'DISTRIBUCION_NORMAL', label: 'Distribución · Normal', help: 'Une los hilos de entrada con los de salida, sin puertos ni splitters.' },
+  { value: 'PASO', label: 'De paso', help: 'Funcionamiento normal: muestra la entrada y salida de los hilos, sin puertos ni splitters.' },
+  { value: 'EMPALME', label: 'De empalme', help: 'Funcionamiento normal: empalma directamente los hilos de los tramos reparados, sin puertos ni splitters.' },
 ];
 
 export const MANGA_TYPE_LABELS: Record<string, string> = Object.fromEntries(MANGA_TYPES.map((t) => [t.value, t.label]));
@@ -40,6 +41,7 @@ export const ODF_CAPACITIES = [12, 24, 48, 72, 96, 144];
 
 export const MANGA_COLORS: Record<string, string> = {
   DISTRIBUCION: '#a855f7',
+  DISTRIBUCION_NORMAL: '#a855f7',
   PASO: '#0ea5e9',
   EMPALME: '#f59e0b',
 };
@@ -276,3 +278,5 @@ export const fiberEditFields: EditField[] = [
   { key: 'fiberCount', label: 'Hilos', type: 'select', options: CABLE_FIBER_COUNTS.map((c) => ({ value: String(c), label: fiberCountLabel(c) })) },
   { key: 'status', label: 'Estado', type: 'select', options: ['PLANNED', 'ACTIVE', 'INACTIVE', 'DAMAGED'].map((v) => ({ value: v, label: v })) },
 ];
+
+export const isNormalManga = (type?: string | null) => ['DISTRIBUCION_NORMAL', 'PASO', 'EMPALME'].includes(type ?? '');

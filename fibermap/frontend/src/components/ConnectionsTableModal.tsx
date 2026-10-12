@@ -1,3 +1,5 @@
+import { isNormalManga } from '../lib/network';
+import NormalSpliceSheet from './NormalSpliceSheet';
 import { Fragment, useCallback, useEffect, useId, useState } from 'react';
 import { X } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
@@ -5,7 +7,6 @@ import { fiberCountLabel, readJson } from '../lib/network';
 import { fiberColorHex, textOnColor } from '../lib/fiberColors';
 import DismissibleAlert from './DismissibleAlert';
 import FiberTable, { type FiberTableBuffer } from './FiberTable';
-import ConnectDeviceModal from './ConnectDeviceModal';
 import './OdfTableModal.css';
 
 type DeviceKind = 'ODF' | 'MANGA' | 'NAP';
@@ -66,7 +67,6 @@ interface DeviceTableProps {
   busy: boolean;
   onPickTerminal: (terminal: DeviceTerminal) => void;
   onRemoveLink: (linkId: string, text: string) => void;
-  onOpenConnect: (terminal: DeviceTerminal) => void;
 }
 
 // Tabla del dispositivo (derecha): cada puerto con el hilo que entra en él, agrupada por splitter o
@@ -86,7 +86,7 @@ function portCellStyle(terminal: DeviceTerminal) {
     color: textOnColor(first.color),
   };
 }
-function DeviceTable({ kind, name, terminals, picking, busy, onPickTerminal, onRemoveLink, onOpenConnect }: DeviceTableProps) {
+function DeviceTable({ name, terminals, picking, busy, onPickTerminal, onRemoveLink }: DeviceTableProps) {
   const groups = terminals.reduce<Array<{ name: string; items: DeviceTerminal[] }>>((acc, terminal) => {
     const last = acc[acc.length - 1];
     if (last && last.name === terminal.group) last.items.push(terminal);
@@ -172,21 +172,13 @@ function DeviceTable({ kind, name, terminals, picking, busy, onPickTerminal, onR
                   </td>
                   {showPeers && (
                     <td className="device-table-peers">
-                      <button
-                        type="button"
-                        className="device-table-connect"
-                        disabled={busy}
-                        title="Conectar este puerto con otro dispositivo"
-                        onClick={(event) => { event.stopPropagation(); onOpenConnect(terminal); }}
-                      >
-                        {terminal.peers.map((peer) => <span key={peer}>{peer}</span>)}
-                        {(terminal.remote ?? []).map((end) => (
-                          <span key={`${end.deviceId}-${end.fiberNumber}`} className="device-table-remote">
-                            → {KIND_LABEL[end.deviceType]} {end.deviceName}{end.portLabel ? ` · ${end.portLabel}` : ''}
-                          </span>
-                        ))}
-                        {terminal.peers.length === 0 && (terminal.remote ?? []).length === 0 && <span className="device-table-connect-empty">+ Conectar</span>}
-                      </button>
+                      {terminal.peers.map((peer) => <span key={peer}>{peer}</span>)}
+                      {(terminal.remote ?? []).map((end) => (
+                        <span key={`${end.deviceId}-${end.fiberNumber}`} className="device-table-remote">
+                          → {KIND_LABEL[end.deviceType]} {end.deviceName}{end.portLabel ? ` · ${end.portLabel}` : ''}
+                        </span>
+                      ))}
+                      {terminal.peers.length === 0 && (terminal.remote ?? []).length === 0 && <span className="device-table-free">—</span>}
                     </td>
                   )}
                 </tr>
@@ -212,8 +204,6 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
   const [picked, setPicked] = useState<{ fiberId: string; number: number; cableCode: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  // Puerto cuyo "Fusionado con" se abrió para conectarlo con otro dispositivo.
-  const [connecting, setConnecting] = useState<DeviceTerminal | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -289,6 +279,7 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
   };
 
   const terminals = table?.terminals ?? [];
+  const normal = elementKind === 'MANGA' && isNormalManga(table?.device.mangaType);
 
   return (
     <div className="odf-table-backdrop" onMouseDown={onClose}>
@@ -297,8 +288,8 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
           <div>
             <p>{title}</p>
             <h2 id={titleId}>{table?.device.name ?? 'Cargando...'}</h2>
-            {table?.device.capacity != null && <span>{table.portsInUse} de {table.device.capacity} {capacityLabel} con hilo asignado</span>}
-            {table && table.device.capacity == null && <span>{table.portsInUse} {capacityLabel} con hilo asignado</span>}
+            {!normal && table?.device.capacity != null && <span>{table.portsInUse} de {table.device.capacity} {capacityLabel} con hilo asignado</span>}
+            {!normal && table && table.device.capacity == null && <span>{table.portsInUse} {capacityLabel} con hilo asignado</span>}
           </div>
           <button type="button" className="btn-icon icon-button" onClick={onClose} aria-label="Cerrar tabla de conexiones"><X size={19} /></button>
         </header>
@@ -306,7 +297,7 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
         <div className="odf-table-body">
           {loading && <p className="muted">Cargando...</p>}
           {error && <DismissibleAlert className="cable-inspector-error" onClose={() => setError(null)}>{error}</DismissibleAlert>}
-          {table && terminals.length > 0 && table.cables.length > 0 && (
+          {!normal && table && terminals.length > 0 && table.cables.length > 0 && (
             <div className={`connections-sheet-bar${picked ? ' is-picking' : ''}`} role="status">
               {picked ? (
                 <>
@@ -318,7 +309,8 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
               )}
             </div>
           )}
-          {table && (
+          {normal && table && <NormalSpliceSheet data={table} deviceId={elementId} deviceName={table.device.name ?? table.device.code} onRefresh={load} />}
+          {!normal && table && (
             <div className="connections-sheet">
               <div className="connections-sheet-side">
                 <h3 className="connections-sheet-title">Fibras</h3>
@@ -340,7 +332,7 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
                     <article className="odf-table-cable" key={cable.cableId}>
                       <h3>
                         {cableHeading(cable, index)}
-                        <small>{fiberCountLabel(cable.fiberCount)} · hilos {cable.fiberFrom} a {cable.fiberTo}{cable.name ? ` · ${cable.name}` : ''}</small>
+                        <small>{fiberCountLabel(cable.fiberCount)} · conexión asignada: hilos {cable.fiberFrom} a {cable.fiberTo}{cable.name ? ` · ${cable.name}` : ''}</small>
                       </h3>
                       {buffers.length === 0 ? (
                         <p className="odf-table-empty">
@@ -382,7 +374,6 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
                     busy={busy}
                     onPickTerminal={connect}
                     onRemoveLink={removeLink}
-                    onOpenConnect={(terminal) => { setPicked(null); setConnecting(terminal); }}
                   />
                 )}
                 {elementKind !== 'ODF' && (
@@ -393,21 +384,6 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
           )}
         </div>
       </section>
-      {connecting && table && (
-        <ConnectDeviceModal
-          deviceKind={elementKind}
-          deviceId={elementId}
-          deviceName={table.device.name ?? table.device.code}
-          terminal={connecting}
-          cables={table.cables.map((cable) => ({ ...cable, devices: cable.devices ?? [] }))}
-          onClose={() => setConnecting(null)}
-          onConnected={(message) => {
-            setConnecting(null);
-            setNotice(message);
-            load();
-          }}
-        />
-      )}
     </div>
   );
 }

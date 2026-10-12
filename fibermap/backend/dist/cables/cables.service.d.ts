@@ -1,3 +1,4 @@
+import { OpticalConnectionsService } from '../optical-connections/optical-connections.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PolesService } from '../poles/poles.service.js';
 import type { Prisma } from '@prisma/client';
@@ -7,7 +8,8 @@ import { UpdateCableConnectionDto } from './dto/update-cable-connection.dto.js';
 export declare class CablesService {
     private prisma;
     private poles;
-    constructor(prisma: PrismaService, poles: PolesService);
+    private opticalConnections;
+    constructor(prisma: PrismaService, poles: PolesService, opticalConnections: OpticalConnectionsService);
     private resolveProjectId;
     private setGeometry;
     private fiberColor;

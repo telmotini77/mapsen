@@ -139,11 +139,19 @@ export function CreateNodeForm({ lng, lat, kind, onClose, onSave }: CreateNodeFo
           <>
             <div className="form-group">
               <label htmlFor={id('manga-type')}>Tipo de manga</label>
-              <select id={id('manga-type')} value={mangaType} onChange={(e) => setMangaType(e.target.value)}>
-                {MANGA_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+              <select id={id('manga-type')} value={mangaType === 'DISTRIBUCION_NORMAL' ? 'DISTRIBUCION' : mangaType} onChange={(e) => setMangaType(e.target.value)}>
+                {MANGA_TYPES.filter((t) => t.value !== 'DISTRIBUCION_NORMAL').map((t) => (
+                  <option key={t.value} value={t.value}>{t.value === 'DISTRIBUCION' ? 'Distribución' : t.label}</option>
                 ))}
               </select>
+              {(mangaType === 'DISTRIBUCION' || mangaType === 'DISTRIBUCION_NORMAL') && (
+                <label>Categoría de distribución
+                  <select value={mangaType} onChange={(e) => setMangaType(e.target.value)}>
+                    <option value="DISTRIBUCION">Primario (splitter y puertos)</option>
+                    <option value="DISTRIBUCION_NORMAL">Normal (empalmes entre hilos)</option>
+                  </select>
+                </label>
+              )}
               {selectedMangaHelp && <small className="accuracy">{selectedMangaHelp}</small>}
             </div>
             <div className="form-group">

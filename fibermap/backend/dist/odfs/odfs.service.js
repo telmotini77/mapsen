@@ -63,7 +63,7 @@ let OdfsService = class OdfsService {
     }
     async table(id) {
         const odf = await this.findOne(id);
-        const { portsInUse, cables, terminals } = await this.connectionsTable.build('ODF', id, odf.capacity);
+        const { portsInUse, cables, terminals } = await this.connectionsTable.build('ODF', id, odf.capacity, true);
         return {
             device: { id: odf.id, kind: 'ODF', code: odf.code, name: odf.name, capacity: odf.capacity, status: odf.status },
             portsInUse,

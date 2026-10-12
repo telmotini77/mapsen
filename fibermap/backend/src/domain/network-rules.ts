@@ -6,7 +6,7 @@ export const FIBER_COUNTS = [6, 12, 24, 48] as const;
 
 export const BOX_TYPES = ['NAP', 'MANGA'] as const;
 
-export const MANGA_TYPES = ['DISTRIBUCION', 'PASO', 'EMPALME'] as const;
+export const MANGA_TYPES = ['DISTRIBUCION', 'DISTRIBUCION_NORMAL', 'PASO', 'EMPALME'] as const;
 
 export const SPLITTER_RATIOS = ['1:8', '1:16'] as const;
 
@@ -83,3 +83,56 @@ export const DEFAULT_CABLE_CONNECTION = {
   connectionType: 'SPLICE',
   lossDb: 0.1,
 } as const;
+
+// --- Hilos que le tocan a cada dispositivo de una fibra ---
+
+export interface FiberStop {
+  kind: 'ODF' | 'MANGA' | 'NAP';
+  // Rango ya guardado (conexión que ya existía): se respeta tal cual.
+  existing?: { fiberFrom: number; fiberTo: number };
+}
+
+// Rango de hilos por defecto de cada dispositivo que toca una fibra, en el orden del trazado:
+// - Una caja NAP recibe un solo hilo: el primero que ninguna NAP anterior de esta fibra tomó.
+// - Un ODF o una manga reciben todos los hilos, salvo que la fibra venga de un ODF o una manga y
+//   antes haya dejado hilos en cajas NAP: entonces solo recibe los hilos que quedan disponibles
+//   (el tramo continuo más largo de hilos libres, porque la conexión guarda un rango).
+export function defaultFiberRanges(stops: FiberStop[], fiberCount: number) {
+  const dropped = new Set<number>();
+  let fedFromUpstream = false;
+  return stops.map((stop, index) => {
+    let range: { fiberFrom: number; fiberTo: number };
+    if (stop.existing) {
+      range = { fiberFrom: Math.min(stop.existing.fiberFrom, fiberCount), fiberTo: Math.min(stop.existing.fiberTo, fiberCount) };
+    } else if (stop.kind === 'NAP') {
+      const free = Array.from({ length: fiberCount }, (_, i) => i + 1).find((n) => !dropped.has(n)) ?? fiberCount;
+      range = { fiberFrom: free, fiberTo: free };
+    } else if (index > 0 && fedFromUpstream && dropped.size > 0) {
+      range = longestFreeRun(dropped, fiberCount) ?? { fiberFrom: 1, fiberTo: fiberCount };
+    } else {
+      range = { fiberFrom: 1, fiberTo: fiberCount };
+    }
+    if (stop.kind === 'NAP') {
+      for (let n = range.fiberFrom; n <= range.fiberTo; n++) dropped.add(n);
+    } else {
+      fedFromUpstream = true;
+    }
+    return range;
+  });
+}
+
+function longestFreeRun(taken: Set<number>, fiberCount: number) {
+  let best: { fiberFrom: number; fiberTo: number } | null = null;
+  let start: number | null = null;
+  for (let n = 1; n <= fiberCount + 1; n++) {
+    const free = n <= fiberCount && !taken.has(n);
+    if (free && start === null) start = n;
+    if (!free && start !== null) {
+      if (!best || n - start > best.fiberTo - best.fiberFrom + 1) best = { fiberFrom: start, fiberTo: n - 1 };
+      start = null;
+    }
+  }
+  return best;
+}
+
+export const isNormalManga = (type?: string | null) => ['DISTRIBUCION_NORMAL', 'PASO', 'EMPALME'].includes(type ?? '');

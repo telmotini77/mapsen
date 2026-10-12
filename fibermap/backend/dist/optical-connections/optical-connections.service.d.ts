@@ -1,3 +1,4 @@
+import { SetNormalMappingDto } from './dto/set-normal-mapping.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { OpticalTopologyValidatorService } from '../optical-topology-validator/optical-topology-validator.service.js';
 import { CreateOpticalConnectionDto } from './dto/create-optical-connection.dto.js';
@@ -10,6 +11,26 @@ export declare class OpticalConnectionsService {
     private topologyValidator;
     private connectionsTable;
     constructor(prisma: PrismaService, topologyValidator: OpticalTopologyValidatorService, connectionsTable: ConnectionsTableService);
+    assignCablePorts(cableId: string): Promise<void>;
+    private assignNormalSplices;
+    setNormalMapping(dto: SetNormalMappingDto): Promise<{
+        status: string;
+        id: string;
+        createdAt: Date;
+        updatedAt: Date;
+        deletedAt: Date | null;
+        notes: string | null;
+        connectionType: string;
+        lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        version: number;
+        sourceTerminationId: string;
+        targetTerminationId: string;
+        sourceFiberId: string | null;
+        targetFiberId: string | null;
+        spliceMethod: string | null;
+        technician: string | null;
+        splicedAt: Date | null;
+    }>;
     private resolveTermination;
     private setPortStatus;
     createFiberLink(dto: CreateFiberLinkDto): Promise<{
@@ -65,6 +86,7 @@ export declare class OpticalConnectionsService {
         technician: string | null;
         splicedAt: Date | null;
     }>;
+    private extendDeviceFiberRange;
     private syncBoxOccupancyForTypes;
     private assertFiberAtBox;
     create(dto: CreateOpticalConnectionDto): Promise<{
