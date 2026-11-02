@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 export const FIBER_COUNTS = [6, 12, 24, 48];
 export const BOX_TYPES = ['NAP', 'MANGA'];
 export const MANGA_TYPES = ['DISTRIBUCION', 'DISTRIBUCION_NORMAL', 'PASO', 'EMPALME'];
@@ -35,19 +36,38 @@ export const DEFAULT_CABLE_CONNECTION = {
     lossDb: 0.1,
 };
 export function defaultFiberRanges(stops, fiberCount) {
+    if (!CABLE_FIBER_COUNTS.includes(fiberCount))
+        throw new BadRequestException('Cantidad de hilos no permitida');
+    for (const stop of stops) {
+        const r = stop.existing;
+        if (r && (!Number.isInteger(r.fiberFrom) || !Number.isInteger(r.fiberTo) || r.fiberFrom < 1 || r.fiberTo < r.fiberFrom || r.fiberTo > fiberCount)) {
+            throw new BadRequestException('El rango guardado está fuera de la capacidad de la fibra');
+        }
+    }
+    const reserved = new Set();
+    for (const stop of stops)
+        if (stop.kind === 'NAP' && stop.existing) {
+            for (let n = stop.existing.fiberFrom; n <= stop.existing.fiberTo; n++)
+                reserved.add(n);
+        }
     const dropped = new Set();
     let fedFromUpstream = false;
     return stops.map((stop, index) => {
         let range;
         if (stop.existing) {
-            range = { fiberFrom: Math.min(stop.existing.fiberFrom, fiberCount), fiberTo: Math.min(stop.existing.fiberTo, fiberCount) };
+            range = { ...stop.existing };
         }
         else if (stop.kind === 'NAP') {
-            const free = Array.from({ length: fiberCount }, (_, i) => i + 1).find((n) => !dropped.has(n)) ?? fiberCount;
+            const free = Array.from({ length: fiberCount }, (_, i) => i + 1).find((n) => !dropped.has(n) && !reserved.has(n));
+            if (free === undefined)
+                throw new BadRequestException('No hay hilos disponibles para otra caja NAP');
             range = { fiberFrom: free, fiberTo: free };
         }
         else if (index > 0 && fedFromUpstream && dropped.size > 0) {
-            range = longestFreeRun(dropped, fiberCount) ?? { fiberFrom: 1, fiberTo: fiberCount };
+            const available = longestFreeRun(dropped, fiberCount);
+            if (!available)
+                throw new BadRequestException('No hay hilos disponibles para continuar hacia la manga u ODF');
+            range = available;
         }
         else {
             range = { fiberFrom: 1, fiberTo: fiberCount };

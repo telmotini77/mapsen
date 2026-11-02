@@ -16,9 +16,13 @@ let CustomersService = class CustomersService {
         this.prisma = prisma;
     }
     async resolveProjectId(projectId) {
-        if (projectId)
+        if (projectId) {
+            const project = await this.prisma.project.findFirst({ where: { id: projectId, deletedAt: null } });
+            if (!project)
+                throw new NotFoundException('Proyecto no encontrado');
             return projectId;
-        let project = await this.prisma.project.findFirst();
+        }
+        let project = await this.prisma.project.findFirst({ where: { deletedAt: null } });
         if (!project) {
             project = await this.prisma.project.create({
                 data: { code: 'DEF-001', name: 'Proyecto por Defecto' },
@@ -154,8 +158,8 @@ let CustomersService = class CustomersService {
                 longitude: dto.longitude,
                 notes: dto.notes,
                 status: dto.status ?? (viability ? (viability.viable ? 'VIABLE' : 'NOT_VIABLE') : undefined),
-                nearestBoxId: viability ? viability.nearestBox?.id : undefined,
-                distanceToBoxMeters: viability ? (viability.distanceMeters ?? undefined) : undefined,
+                nearestBoxId: viability ? (viability.nearestBox?.id ?? null) : undefined,
+                distanceToBoxMeters: viability ? (viability.distanceMeters ?? null) : undefined,
             },
         });
         if (locationChanged) {

@@ -2,6 +2,8 @@
 
 Sistema de gestión, diseño y visualización de redes de fibra óptica.
 
+La [base técnica](BASE_TECNICA.md) vincula historias de usuario, modelo de datos y criterios de aceptación, e identifica las brechas pendientes.
+
 ## Ejecutar con Docker
 
 Desde esta carpeta, con Docker Desktop iniciado:
