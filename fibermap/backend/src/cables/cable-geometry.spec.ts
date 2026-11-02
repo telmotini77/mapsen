@@ -102,3 +102,36 @@ describe('trazado con puntos insuficientes', () => {
     expect(resultado).toEqual([{ lat: 0, lng: 0 }]);
   });
 });
+describe('actualización del trazado de fibra', () => {
+  it('identifica el nuevo destino al modificar el recorrido', () => {
+    const odf = el('ODF-1', 'ODF', 0, 0);
+    const mangaA = el('MANGA-A', 'MANGA', 50 * M, 0);
+    const mangaB = el('MANGA-B', 'MANGA', 100 * M, 0);
+
+    const recorridoOriginal = snapPathToElements(
+      [
+        { lat: odf.lat, lng: odf.lng },
+        { lat: mangaA.lat, lng: mangaA.lng },
+      ],
+      [odf, mangaA, mangaB],
+      10,
+    );
+
+    const recorridoModificado = snapPathToElements(
+      [
+        { lat: odf.lat, lng: odf.lng },
+        { lat: mangaB.lat, lng: mangaB.lng },
+      ],
+      [odf, mangaA, mangaB],
+      10,
+    );
+
+    expect(
+      connectionsFromPath(recorridoOriginal).map((c) => c.element.id),
+    ).toEqual(['ODF-1', 'MANGA-A']);
+
+    expect(
+      connectionsFromPath(recorridoModificado).map((c) => c.element.id),
+    ).toEqual(['ODF-1', 'MANGA-B']);
+  });
+});
