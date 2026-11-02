@@ -415,7 +415,7 @@ function App() {
   const poleHint = (rule: string) =>
     (mapRef.current?.getZoom() ?? 0) < POLE_MIN_ZOOM
       ? `Acércate hasta ver los postes (zoom ${POLE_MIN_ZOOM} o más). ${rule}`
-      : `No hay un poste en ese punto. ${rule}`;
+     : `No se pudo colocar el punto de fibra. Acércate al mapa y selecciona un poste visible o el centro de un ODF, una manga o una caja NAP. ${rule}`;
 
   // Distancia en píxeles de un punto a un segmento, para saber si el clic cayó sobre la línea.
   const distanceToSegmentPx = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => {
