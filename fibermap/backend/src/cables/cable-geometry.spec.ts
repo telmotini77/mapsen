@@ -84,3 +84,21 @@ describe('nearestWithin', () => {
     expect(nearestWithin({ lat: 0, lng: 0 }, [], 5)).toBeNull();
   });
 });
+describe('trazado con puntos insuficientes', () => {
+  it('devuelve una lista vacía cuando no hay puntos', () => {
+    const resultado = snapPathToElements([], [], 10);
+
+    expect(resultado).toEqual([]);
+  });
+
+  it('conserva un único punto sin conectarlo a dispositivos', () => {
+    const odf = el('ODF-1', 'ODF', 0, 0);
+    const resultado = snapPathToElements(
+      [{ lat: 0, lng: 0 }],
+      [odf],
+      10
+    );
+
+    expect(resultado).toEqual([{ lat: 0, lng: 0 }]);
+  });
+});
