@@ -1,3 +1,4 @@
+import { useHistory } from './lib/useHistory';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Map, { NavigationControl, ScaleControl, Marker, Source, Layer } from 'react-map-gl/maplibre';
 import * as maplibregl from 'maplibre-gl';
@@ -155,7 +156,8 @@ function App() {
   const [elements, setElements] = useState<NetworkElement[]>([]);
   const [poles, setPoles] = useState<ImportedPole[]>([]);
   const [cables, setCables] = useState<FiberRecord[]>([]);
-  const [cablePoints, setCablePoints] = useState<RoutePoint[]>([]);
+  const cableHistory = useHistory<RoutePoint[]>([]);
+  const { value: cablePoints, set: setCablePoints } = cableHistory;
   const [cableCursor, setCableCursor] = useState<{ lat: number; lng: number } | null>(null);
   // Poste o dispositivo al que se imantaría un clic en este momento (se dibuja como un anillo).
   const [snapHover, setSnapHover] = useState<{ lat: number; lng: number } | null>(null);
@@ -164,7 +166,8 @@ function App() {
   const [fiberCount, setFiberCount] = useState(12);
   // El color de la fibra siempre es el estándar de su cantidad de hilos.
   const fiberColor = defaultFiberColor(fiberCount);
-  const [pathEdit, setPathEdit] = useState<PathEdit | null>(null);
+  const pathHistory = useHistory<PathEdit | null>(null);
+  const { value: pathEdit, set: setPathEdit } = pathHistory;
   const [pathError, setPathError] = useState<string | null>(null);
   const [savingRoute, setSavingRoute] = useState(false);
   // El servidor dejó de responder mientras se usaba la app: se avisa y se reintenta solo.
@@ -347,10 +350,10 @@ function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (pathEdit) {
-        setPathEdit(null);
+        pathHistory.reset(null);
         setPathError(null);
       } else if (activeTool === 'add-cable') {
-        setCablePoints([]);
+        cableHistory.reset([]);
         setCableCursor(null);
         setActiveTool('select');
       } else if (mapClickCoord) {
@@ -378,6 +381,7 @@ function App() {
   }
 
   const addCablePoint = (point: RoutePoint) => {
+    if (savingRoute) return;
     setCablePoints((prev) => [...prev, point]);
   };
 
@@ -435,15 +439,17 @@ function App() {
     setActiveTool('select');
     setPathError(null);
     const original = cable.path.map(({ lat, lng }) => ({ lat, lng }));
-    setPathEdit({ cableId, code: cable.code, color: cableColor(cable), points: original, original });
+    pathHistory.reset({ cableId, code: cable.code, color: cableColor(cable), points: original, original });
   };
 
   const cancelPathEdit = () => {
-    setPathEdit(null);
+    if (savingRoute) return;
+    pathHistory.reset(null);
     setPathError(null);
   };
 
   const restorePathEdit = () => {
+    if (savingRoute) return;
     setPathEdit((prev) => (prev ? { ...prev, points: prev.original.map((p) => ({ ...p })) } : prev));
     setPathError(null);
   };
@@ -454,7 +460,7 @@ function App() {
     if (preferences.confirmDestructiveActions && !window.confirm(`¿Eliminar la fibra ${pathEdit.code}? Se quitará del mapa junto con sus conexiones con dispositivos.`)) return;
     try {
       await readJson(await apiFetch(`/cables/${pathEdit.cableId}`, { method: 'DELETE' }), 'No se pudo eliminar la fibra');
-      setPathEdit(null);
+      pathHistory.reset(null);
       setPathError(null);
       fetchCables();
     } catch (error) {
@@ -464,20 +470,24 @@ function App() {
 
   // Borra todo el trazado en curso para empezar de nuevo sin salir de la herramienta.
   const handleClearCable = () => {
+    if (savingRoute) return;
     setCablePoints([]);
     setCableCursor(null);
   };
 
   const movePathPoint = (index: number, lat: number, lng: number) => {
+    if (savingRoute) return;
     setPathEdit((prev) => (prev ? { ...prev, points: prev.points.map((p, i) => (i === index ? { lat, lng } : p)) } : prev));
   };
 
   const removePathPoint = (index: number) => {
+    if (savingRoute) return;
     setPathEdit((prev) => (prev && prev.points.length > 2 ? { ...prev, points: prev.points.filter((_, i) => i !== index) } : prev));
   };
 
   // Clic sobre la línea (a menos de unos píxeles): agrega un punto de giro en ese tramo.
   const insertPathPoint = (lat: number, lng: number) => {
+    if (savingRoute) return;
     const map = mapRef.current;
     if (!map || !pathEdit) return;
     const click = map.project([lng, lat]);
@@ -500,8 +510,36 @@ function App() {
     });
   };
 
+  useEffect(() => {
+    const onHistoryKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (savingRoute || (!isTracing && !pathEdit) || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      event.preventDefault();
+      const history = pathEdit ? pathHistory : cableHistory;
+      if (key === 'y' || event.shiftKey) history.redo(); else history.undo();
+      setPathError(null);
+      setMapHint(null);
+      setCableCursor(null);
+    };
+    window.addEventListener('keydown', onHistoryKey);
+    return () => window.removeEventListener('keydown', onHistoryKey);
+  });
+
+  const validateRoute = (points: { lat: number; lng: number }[]) => {
+    if (points.length < 2) return 'Agrega al menos dos puntos para trazar la fibra.';
+    if (points.some(p => !Number.isFinite(p.lat) || !Number.isFinite(p.lng) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180)) return 'El trazado contiene coordenadas inválidas.';
+    if (points.some((p, i) => i > 0 && p.lat === points[i - 1].lat && p.lng === points[i - 1].lng)) return 'Hay puntos consecutivos repetidos. Mueve o elimina el punto duplicado.';
+    if (!elements.some(e => Math.abs(e.lat - points[0].lat) < 0.000018 && Math.abs(e.lng - points[0].lng) < 0.000018)) return 'La fibra debe empezar en el centro de un ODF, una manga o una NAP.';
+    return null;
+  };
+
   const savePathEdit = async () => {
-    if (!pathEdit) return;
+    if (!pathEdit || savingRoute) return;
+    const error = validateRoute(pathEdit.points);
+    if (error) { setPathError(error); return; }
     setSavingRoute(true);
     setPathError(null);
     try {
@@ -511,7 +549,7 @@ function App() {
       });
       await readJson(res, 'No se pudo guardar el nuevo trazado');
       const cableId = pathEdit.cableId;
-      setPathEdit(null);
+      pathHistory.reset(null);
       await fetchCables();
       // Se muestra el inspector para revisar a qué dispositivos quedó conectada tras el cambio.
       setSelectedCable({ id: cableId });
@@ -614,17 +652,20 @@ function App() {
   };
 
   const handleUndoCablePoint = () => {
-    setCablePoints((prev) => prev.slice(0, -1));
+    cableHistory.undo();
   };
 
   const handleCancelCable = () => {
-    setCablePoints([]);
+    if (savingRoute) return;
+    cableHistory.reset([]);
     setCableCursor(null);
     setActiveTool('select');
   };
 
   const handleFinishRoute = async () => {
-    if (cablePoints.length < 2) return;
+    if (savingRoute) return;
+    const error = validateRoute(cablePoints);
+    if (error) { setMapHint(error); return; }
     setSavingRoute(true);
     try {
       const res = await apiFetch('/cables', {
@@ -635,7 +676,7 @@ function App() {
         }),
       });
       const created = await readJson(res, 'No se pudo guardar la fibra');
-      setCablePoints([]);
+      cableHistory.reset([]);
       setCableCursor(null);
       setActiveTool('select');
       await fetchCables();
@@ -1125,6 +1166,7 @@ function App() {
                   automáticamente con una configuración por defecto, que podrás cambiar después; uno por el que la línea solo pase cerca,
                   sin haberle hecho clic, no se conecta. Mantén y arrastra el botón <strong>derecho</strong> para mover el mapa.
                 </p>
+                <p className="muted">Ctrl+Z: deshacer · Ctrl+Mayús+Z o Ctrl+Y: rehacer</p>
                 <p className="muted" aria-live="polite">{cablePoints.length} punto(s) agregado(s)</p>
                 {cablePoints.length > 0 && !cablePoints[0].ref && (
                   <p className="trace-warning" role="alert">El primer punto debe estar en el centro de un dispositivo.</p>
@@ -1148,20 +1190,21 @@ function App() {
                   <button
                     className="btn-secondary"
                     onClick={handleUndoCablePoint}
-                    disabled={cablePoints.length === 0}
+                    disabled={!cableHistory.canUndo || savingRoute}
                     aria-label="Deshacer el último punto agregado"
                   >
-                    Deshacer punto
+                    Deshacer
                   </button>
+                  <button className="btn-secondary" onClick={cableHistory.redo} disabled={!cableHistory.canRedo || savingRoute}>Rehacer</button>
                   <button
                     className="btn-secondary"
                     onClick={handleClearCable}
-                    disabled={cablePoints.length === 0}
+                    disabled={cablePoints.length === 0 || savingRoute}
                     aria-label="Borrar todos los puntos y empezar de nuevo"
                   >
                     Borrar todo
                   </button>
-                  <button className="btn-secondary" onClick={handleCancelCable} aria-label="Cancelar el trazado de la fibra">
+                  <button className="btn-secondary" onClick={handleCancelCable} disabled={savingRoute} aria-label="Cancelar el trazado de la fibra">
                     Cancelar
                   </button>
                   <button
@@ -1184,14 +1227,17 @@ function App() {
                   centro de un dispositivo): si lo sueltas lejos de uno vuelve a donde estaba. La fibra debe seguir
                   empezando en el centro de un ODF, una manga o una caja NAP (un ODF solo se conecta con mangas).
                 </p>
+                <p className="muted">Ctrl+Z: deshacer · Ctrl+Mayús+Z o Ctrl+Y: rehacer</p>
                 <p className="muted" aria-live="polite">{pathEdit.points.length} punto(s)</p>
                 {pathError && <DismissibleAlert className="trace-warning" onClose={() => setPathError(null)}>{pathError}</DismissibleAlert>}
                 <div className="cable-draw-actions">
+                  <button className="btn-secondary" onClick={pathHistory.undo} disabled={!pathHistory.canUndo || savingRoute}>Deshacer</button>
+                  <button className="btn-secondary" onClick={pathHistory.redo} disabled={!pathHistory.canRedo || savingRoute}>Rehacer</button>
                   <button className="btn-secondary" onClick={restorePathEdit} disabled={savingRoute}>Descartar cambios</button>
                   <button className="btn-secondary cable-delete-inline" onClick={deletePathCable} disabled={savingRoute}>Eliminar fibra</button>
                 </div>
                 <div className="cable-draw-actions">
-                  <button className="btn-secondary" onClick={cancelPathEdit}>Cancelar</button>
+                  <button className="btn-secondary" onClick={cancelPathEdit} disabled={savingRoute}>Cancelar</button>
                   <button className="btn-primary" onClick={savePathEdit} disabled={savingRoute}>
                     {savingRoute ? 'Guardando...' : 'Guardar trazado'}
                   </button>
