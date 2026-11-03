@@ -885,6 +885,9 @@ function App() {
                     style={{
                       ...markerShape(el),
                       backgroundColor: elementColor(el),
+                      border: selectedElement?.id === el.id && selectedElement?.kind === el.kind
+  ? '3px solid #facc15'
+  : '2px solid white',
                       cursor: isTracing ? 'crosshair' : 'pointer',
                     }}
                     title={`${el.code} (${ELEMENT_LABELS[el.kind]})`}
