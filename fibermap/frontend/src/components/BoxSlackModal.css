@@ -12,4 +12,5 @@
 .slack-records { list-style: none; margin: 0; padding: 0; }
 .slack-records li { justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #334155; flex-wrap: wrap; }
 .slack-error { color: #fca5a5; }
-.slack-marker { width: 28px; height: 25px; display: grid; place-items: center; border: 2px solid white; border-radius: 8px; background: #0f766e; color: white; box-shadow: 0 1px 5px #0009; cursor: pointer; padding: 0; }
+.slack-marker { width: 18px; height: 12px; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; border: 2px solid white; border-radius: 4px; background: #0f766e; color: white; box-shadow: 0 1px 5px #0009; cursor: pointer; padding: 0; }
+.slack-marker > svg { width: 14px; height: 14px; }

@@ -6,6 +6,7 @@ import Map, { NavigationControl, ScaleControl, Marker, Source, Layer } from 'rea
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Layers, MapPin, Activity, Settings, GitPullRequest, Server, LogOut, Users, ChevronDown, ChevronUp, Menu, X, LayoutDashboard, Upload } from 'lucide-react';
+import { reserveTarget } from './lib/reserveSelection';
 import { MapToolbar } from './components/MapToolbar';
 import { CreateNodeForm } from './components/CreateNodeForm';
 import { ElementPropertiesPanel } from './components/ElementPropertiesPanel';
@@ -191,6 +192,7 @@ function App() {
   // Posición de un vértice antes de arrastrarlo, para devolverlo ahí si se suelta lejos de un poste.
   const pathDragOrigin = useRef<{ lat: number; lng: number } | null>(null);
 
+  const isReserving = activeTool === 'reserve';
   const isTracing = activeTool === 'add-cable';
   const placingKind = TOOL_KIND[activeTool] ?? null;
   // Con estas herramientas los clics se imantan a los postes, así que se dibujan aunque estén ocultos en Ajustes.
@@ -367,6 +369,8 @@ function App() {
       if (pathEdit) {
         pathHistory.reset(null);
         setPathError(null);
+      } else if (activeTool === 'reserve') {
+        setActiveTool('select');
       } else if (activeTool === 'add-cable') {
         cableHistory.reset([]);
         setCableCursor(null);
@@ -576,7 +580,22 @@ function App() {
     }
   };
 
+  const selectMapTool = (tool: string) => {
+    if (savingRoute) return;
+    setMapClickCoord(null);
+    setSelectedElement(null);
+    setSelectedCable(null);
+    setMapHint(null);
+    setSnapHover(null);
+    pathHistory.reset(null);
+    setPathError(null);
+    cableHistory.reset([]);
+    setCableCursor(null);
+    setActiveTool(tool === 'reserve' && isReserving ? 'select' : tool);
+  };
+
   const handleMapClick = (e: any) => {
+    if (reserveTarget(activeTool, null) === null) return;
     // In trace mode the primary mouse button is the drawing action. Dragging with it is
     // disabled on the map, so a confirmed click can never accidentally pan the route.
     if (isTracing) {
@@ -919,7 +938,7 @@ function App() {
               <ScaleControl position="bottom-right" unit="metric" maxWidth={110} />
               <MapScaleIndicator polesEnabled={preferences.showImportedPoles || snappingPoles} />
 
-              <MapToolbar activeTool={activeTool} onToolSelect={setActiveTool} />
+              <MapToolbar activeTool={activeTool} onToolSelect={selectMapTool} />
 
               {elements.map((el) => (
                 <Marker
@@ -929,6 +948,11 @@ function App() {
                   anchor="center"
                   onClick={(e) => {
                     e.originalEvent.stopPropagation();
+                    const target = reserveTarget(activeTool, el);
+                    if (target !== undefined) {
+                      if (target) { setSlackBox(target); setActiveTool('select'); }
+                      return;
+                    }
                     if (isTracing) {
                       addCablePoint({ lat: el.lat, lng: el.lng, ref: { type: el.kind, id: el.id } });
                       return;
@@ -938,11 +962,15 @@ function App() {
                     setActiveTool('select');
                   }}
                 >
-                  <div
+                  <button
+                    type="button"
+                    className={'network-marker ' + (isReserving ? (reserveTarget(activeTool, el) ? 'reserve-eligible' : 'reserve-ineligible') : '')}
+                    aria-label={(isReserving && reserveTarget(activeTool, el) ? 'Abrir reservas de ' : '') + el.code}
+                    disabled={isReserving && !reserveTarget(activeTool, el)}
                     style={{
                       ...markerShape(el),
                       backgroundColor: elementColor(el),
-                      cursor: isTracing ? 'crosshair' : 'pointer',
+                      cursor: isReserving && !reserveTarget(activeTool, el) ? 'not-allowed' : isTracing ? 'crosshair' : 'pointer',
                     }}
                     title={`${el.code} (${ELEMENT_LABELS[el.kind]})`}
                   />
@@ -951,7 +979,7 @@ function App() {
 
               {!isTracing && !pathEdit && elements.filter(el => (el.kind === 'NAP' || el.kind === 'MANGA') && boxSlacks.some(record => record.boxId === el.id)).map(el => (
                 <Marker key={`slack-${el.id}`} longitude={el.lng} latitude={el.lat} anchor="center" offset={[23, -15]}>
-                  <button type="button" className="slack-marker" title={`Reservas de cable de ${el.code}`} aria-label={`Ver reservas de cable de ${el.code}`} onClick={event => { event.stopPropagation(); setSlackBox(el); }}><InfinityIcon size={21} aria-hidden="true" /></button>
+                  <button type="button" className="slack-marker" title={`Reservas de cable de ${el.code}`} aria-label={`Ver reservas de cable de ${el.code}`} onClick={event => { event.stopPropagation(); setSlackBox(el); if (isReserving) setActiveTool('select'); }}><InfinityIcon size={21} aria-hidden="true" /></button>
                 </Marker>
               ))}
 
@@ -1168,6 +1196,12 @@ function App() {
 
             </Map>
 
+            {isReserving && (
+              <div className="map-hint reserve-guidance" role="status">
+                <span>Reserva: selecciona una caja NAP o manga resaltada. Solo estas estructuras admiten reservas.</span>
+                <button type="button" className="btn-secondary" onClick={() => selectMapTool('select')}>Cancelar</button>
+              </div>
+            )}
             {mapHint ? (
               <DismissibleAlert className="map-hint map-hint-warning" onClose={() => setMapHint(null)}>{mapHint}</DismissibleAlert>
             ) : (
@@ -1292,6 +1326,9 @@ function App() {
                     ))}
                     <div className="legend-item">
                       <span style={{ ...markerShape({ kind: 'NAP' } as NetworkElement), backgroundColor: ELEMENT_COLORS.NAP, display: 'inline-block' }}></span> Caja NAP
+                    </div>
+                    <div className="legend-item">
+                      <span className="slack-marker" style={{ cursor: 'default', flexShrink: 0 }} aria-hidden="true"><InfinityIcon size={14} /></span> Reserva
                     </div>
                     <div className="legend-item">
                       <span className="pole-marker pole-marker-legend" aria-hidden="true"></span> Poste importado (se ve al acercar el zoom)
