@@ -15,8 +15,6 @@ export declare class UsersService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -25,6 +23,8 @@ export declare class UsersService {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }>;
     findAll(): import(".prisma/client").Prisma.PrismaPromise<{
         name: string;
@@ -32,8 +32,6 @@ export declare class UsersService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -42,6 +40,8 @@ export declare class UsersService {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }[]>;
     findOne(id: string): Promise<{
         name: string;
@@ -49,8 +49,6 @@ export declare class UsersService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -59,6 +57,8 @@ export declare class UsersService {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }>;
     findByEmailWithCredentials(email: string): import(".prisma/client").Prisma.Prisma__UserClient<({
         roles: ({
@@ -93,8 +93,6 @@ export declare class UsersService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -103,6 +101,8 @@ export declare class UsersService {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }>;
     remove(id: string): Promise<{
         name: string;
@@ -110,8 +110,6 @@ export declare class UsersService {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -120,6 +118,8 @@ export declare class UsersService {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }>;
     touchLastLogin(id: string): import(".prisma/client").Prisma.Prisma__UserClient<{
         name: string;

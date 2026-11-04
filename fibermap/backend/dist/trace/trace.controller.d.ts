@@ -4,7 +4,7 @@ export declare class TraceController {
     constructor(traceService: TraceService);
     trace(type: string, id: string): Promise<{
         device: {
-            kind: "ODF" | "MANGA" | "NAP";
+            kind: "NAP" | "MANGA" | "ODF";
             id: string;
             name: string;
         };

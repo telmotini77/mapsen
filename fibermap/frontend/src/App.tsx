@@ -1,3 +1,5 @@
+import BoxSlackModal, { type BoxSlack } from './components/BoxSlackModal';
+import { Infinity as InfinityIcon } from 'lucide-react';
 import { useHistory } from './lib/useHistory';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import Map, { NavigationControl, ScaleControl, Marker, Source, Layer } from 'react-map-gl/maplibre';
@@ -142,6 +144,9 @@ const BASE_MAP_STYLE: maplibregl.StyleSpecification = {
 
 function App() {
   const { user, loading, logout, serverOffline, retryConnection } = useAuth();
+  const [slackBox, setSlackBox] = useState<NetworkElement | null>(null);
+  const [boxSlacks, setBoxSlacks] = useState<BoxSlack[]>([]);
+  const slackRequest = useRef(0);
   const [activeTab, setActiveTab] = useState('map');
   const [activeTool, setActiveTool] = useState('select');
   const [mapClickCoord, setMapClickCoord] = useState<{lng: number, lat: number, x: number, y: number} | null>(null);
@@ -208,9 +213,18 @@ function App() {
     else console.error(`Error fetching ${label}:`, error);
   };
 
+  const fetchSlacks = async () => {
+    const request = ++slackRequest.current;
+    try {
+      const records = await apiList<BoxSlack>('/boxes/slacks', 'No se pudieron cargar las reservas');
+      if (request === slackRequest.current) setBoxSlacks(records);
+    } catch (error) { noteFailure('cable reserves', error); }
+  };
+
   const fetchNetwork = async () => {
     try {
       setElements(await fetchElements());
+      void fetchSlacks();
       setConnectionLost(false);
       setConnectionNoticeClosed(false);
     } catch (error) {
@@ -221,6 +235,7 @@ function App() {
   const fetchCables = async () => {
     try {
       setCables(await apiList<FiberRecord>('/cables', 'No se pudieron cargar las fibras'));
+      void fetchSlacks();
       setConnectionLost(false);
     } catch (error) {
       noteFailure('cables', error);
@@ -368,6 +383,25 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [activeTool, mapClickCoord, selectedElement, sidebarOpen, pathEdit]);
 
+  useEffect(() => {
+    if (!user) return;
+    const onHistoryKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (savingRoute || (!isTracing && !pathEdit) || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      event.preventDefault();
+      const history = pathEdit ? pathHistory : cableHistory;
+      if (key === 'y' || event.shiftKey) history.redo(); else history.undo();
+      setPathError(null);
+      setMapHint(null);
+      setCableCursor(null);
+    };
+    window.addEventListener('keydown', onHistoryKey);
+    return () => window.removeEventListener('keydown', onHistoryKey);
+  });
+
   if (serverOffline && !user) {
     return <ServerOfflineScreen onRetry={retryConnection} />;
   }
@@ -509,24 +543,6 @@ function App() {
       points: [...pathEdit.points.slice(0, best.index + 1), { lat: point.lat, lng: point.lng }, ...pathEdit.points.slice(best.index + 1)],
     });
   };
-
-  useEffect(() => {
-    const onHistoryKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (savingRoute || (!isTracing && !pathEdit) || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
-      const key = event.key.toLowerCase();
-      if (key !== 'z' && key !== 'y') return;
-      event.preventDefault();
-      const history = pathEdit ? pathHistory : cableHistory;
-      if (key === 'y' || event.shiftKey) history.redo(); else history.undo();
-      setPathError(null);
-      setMapHint(null);
-      setCableCursor(null);
-    };
-    window.addEventListener('keydown', onHistoryKey);
-    return () => window.removeEventListener('keydown', onHistoryKey);
-  });
 
   const validateRoute = (points: { lat: number; lng: number }[]) => {
     if (points.length < 2) return 'Agrega al menos dos puntos para trazar la fibra.';
@@ -933,6 +949,12 @@ function App() {
                 </Marker>
               ))}
 
+              {!isTracing && !pathEdit && elements.filter(el => (el.kind === 'NAP' || el.kind === 'MANGA') && boxSlacks.some(record => record.boxId === el.id)).map(el => (
+                <Marker key={`slack-${el.id}`} longitude={el.lng} latitude={el.lat} anchor="center" offset={[23, -15]}>
+                  <button type="button" className="slack-marker" title={`Reservas de cable de ${el.code}`} aria-label={`Ver reservas de cable de ${el.code}`} onClick={event => { event.stopPropagation(); setSlackBox(el); }}><InfinityIcon size={21} aria-hidden="true" /></button>
+                </Marker>
+              ))}
+
               {/* Marker uses CSS pixels, so it remains a small fixed-size point at every zoom. */}
               {(preferences.showImportedPoles || snappingPoles) && poles.length > 0 && (
                 <Source id="imported-poles" type="geojson" data={poleGeoJson}>
@@ -1138,6 +1160,7 @@ function App() {
                   onOpenEditor={() => handleOpenBoxEditor(selectedElement)}
                   onEdit={() => setEditingElement(selectedElement)}
                   onDelete={() => handleDeleteElement(selectedElement)}
+                  onViewSlacks={() => setSlackBox(selectedElement)}
                   onViewConnections={() => handleViewConnections(selectedElement)}
                   onViewConnectionsTable={() => setConnectionsTableTarget({ kind: selectedElement.kind, id: selectedElement.id })}
                 />
@@ -1346,6 +1369,7 @@ function App() {
         )}
       </main>
 
+      {slackBox && <BoxSlackModal key={slackBox.id} box={slackBox} canManage={user.roles.some(role => role === 'ADMIN' || role === 'OPERATOR')} onClose={() => setSlackBox(null)} onChanged={fetchSlacks} />}
       {editingElement && (
         <EditEntityModal
           title={`Editar ${ELEMENT_LABELS[editingElement.kind]}: ${editingElement.name || editingElement.code}`}

@@ -1,3 +1,4 @@
+import { BoxSlacksService } from './box-slacks.service.js';
 import { Module } from '@nestjs/common';
 import { PolesModule } from '../poles/poles.module.js';
 import { ConnectionsTableModule } from '../cables/connections-table.module.js';
@@ -7,6 +8,6 @@ import { BoxesController } from './boxes.controller.js';
 @Module({
   imports: [PolesModule, ConnectionsTableModule],
   controllers: [BoxesController],
-  providers: [BoxesService],
+  providers: [BoxesService, BoxSlacksService],
 })
 export class BoxesModule {}

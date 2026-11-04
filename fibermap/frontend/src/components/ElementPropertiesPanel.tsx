@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { X, Edit, GitPullRequest, Link as LinkIcon, Table2, Trash2 } from 'lucide-react';
+import { X, Edit, GitPullRequest, Link as LinkIcon, Table2, Trash2, Infinity as InfinityIcon } from 'lucide-react';
 import { ELEMENT_LABELS, MANGA_TYPE_LABELS, describeElement, hasInterior, type NetworkElement } from '../lib/network';
 import './ElementPropertiesPanel.css';
 
@@ -13,6 +13,7 @@ interface ElementPropertiesPanelProps {
   // Abre la tabla de conexiones del elemento (puerto · hilo · buffer · servicio): "Tabla de
   // puertos" en un ODF, "Tabla de conexiones" en una manga o caja NAP.
   onViewConnectionsTable?: () => void;
+  onViewSlacks?: () => void;
 }
 
 export function ElementPropertiesPanel({
@@ -23,6 +24,7 @@ export function ElementPropertiesPanel({
   onDelete,
   onViewConnections,
   onViewConnectionsTable,
+  onViewSlacks,
 }: ElementPropertiesPanelProps) {
   const titleId = useId();
   const closeBtnRef = useRef<HTMLButtonElement>(null);
@@ -96,6 +98,7 @@ export function ElementPropertiesPanel({
       </div>
 
       <div className="panel-actions">
+        {onViewSlacks && (element.kind === 'NAP' || element.kind === 'MANGA') && <button className="action-btn" onClick={onViewSlacks}><InfinityIcon size={16} aria-hidden="true" /> Reservas de cable</button>}
         <button className="action-btn" onClick={onEdit} aria-label="Editar elemento">
           <Edit size={16} aria-hidden="true" /> Editar
         </button>
