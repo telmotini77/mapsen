@@ -1,5 +1,3 @@
-import { isNormalManga } from '../lib/network';
-import NormalSpliceSheet from './NormalSpliceSheet';
 import { Fragment, useCallback, useEffect, useId, useState } from 'react';
 import { X } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
@@ -7,6 +5,9 @@ import { fiberCountLabel, readJson } from '../lib/network';
 import { fiberColorHex, textOnColor } from '../lib/fiberColors';
 import DismissibleAlert from './DismissibleAlert';
 import FiberTable, { type FiberTableBuffer } from './FiberTable';
+import ConnectDeviceModal from './ConnectDeviceModal';
+import FiberContinuityBoard from './FiberContinuityBoard';
+import FiberFusionModal from './FiberFusionModal';
 import './OdfTableModal.css';
 
 type DeviceKind = 'ODF' | 'MANGA' | 'NAP';
@@ -16,6 +17,8 @@ interface DeviceTerminal {
   group: string;
   label: string;
   status: string;
+  splitter?: { id: string; code: string; name: string | null; ratio: string };
+  connectionIds: string[];
   // `linkId`: enlace hilo → puerto hecho desde esta tabla (se puede quitar con la ×).
   fibers: Array<{ fiberId: string; cableId: string; cableCode: string; number: number; color: string; linkId?: string }>;
   peers: string[];
@@ -40,11 +43,13 @@ interface ConnectionsTable {
     buffers: Array<{
       number: number;
       color: string;
-      fibers: Array<{ id: string; number: number; numberInTube: number; color: string; status: string; service: string | null; port: number; links?: string[] }>;
+      fibers: Array<{ id: string; number: number; numberInTube: number; color: string; status: string; service: string | null; description: string | null; port: number; links?: string[] }>;
     }>;
   }>;
   // Lado derecho de la hoja: puertos del dispositivo y el hilo que entra en cada uno.
   terminals?: DeviceTerminal[];
+  // Mapeos internos entrada → salida en una manga; no ocupan puertos de empalme.
+  fiberMappings?: Array<{ id: string; inputFiberId: string; outputFiberId: string }>;
 }
 
 interface ConnectionsTableModalProps {
@@ -59,7 +64,6 @@ const ENDPOINT_BY_KIND: Record<DeviceKind, string> = { ODF: 'odfs', MANGA: 'boxe
 const KIND_LABEL: Record<DeviceKind, string> = { ODF: 'ODF', MANGA: 'Manga', NAP: 'Caja NAP' };
 
 interface DeviceTableProps {
-  kind: DeviceKind;
   name: string;
   terminals: DeviceTerminal[];
   // Con un hilo elegido en la tabla de la fibra, cada puerto se vuelve clicable para conectarlo.
@@ -67,11 +71,12 @@ interface DeviceTableProps {
   busy: boolean;
   onPickTerminal: (terminal: DeviceTerminal) => void;
   onRemoveLink: (linkId: string, text: string) => void;
+  onOpenConnect: (terminal: DeviceTerminal) => void;
 }
 
-// Tabla del dispositivo (derecha): cada puerto con el hilo que entra en él, agrupada por splitter o
-// por puertos de la caja / del ODF. Es la contraparte de la columna "Puerto" de las tablas de fibra.
-// Todo puerto es de entrada y salida: une hasta dos hilos, uno por cada lado.
+// Tabla del dispositivo (derecha): cada puerto con los hilos unidos en él, agrupada por splitter o
+// por puertos de la caja / del ODF. La entrada del splitter es el extremo alimentador y las salidas
+// son extremos independientes de distribución; un puerto de empalme une como máximo dos hilos.
 const MAX_FIBERS_PER_PORT = 2;
 
 // El puerto se pinta del color del hilo que tiene (como la celda Hilo de la tabla de la fibra); si une
@@ -86,7 +91,7 @@ function portCellStyle(terminal: DeviceTerminal) {
     color: textOnColor(first.color),
   };
 }
-function DeviceTable({ name, terminals, picking, busy, onPickTerminal, onRemoveLink }: DeviceTableProps) {
+function DeviceTable({ name, terminals, picking, busy, onPickTerminal, onRemoveLink, onOpenConnect }: DeviceTableProps) {
   const groups = terminals.reduce<Array<{ name: string; items: DeviceTerminal[] }>>((acc, terminal) => {
     const last = acc[acc.length - 1];
     if (last && last.name === terminal.group) last.items.push(terminal);
@@ -172,13 +177,36 @@ function DeviceTable({ name, terminals, picking, busy, onPickTerminal, onRemoveL
                   </td>
                   {showPeers && (
                     <td className="device-table-peers">
-                      {terminal.peers.map((peer) => <span key={peer}>{peer}</span>)}
-                      {(terminal.remote ?? []).map((end) => (
-                        <span key={`${end.deviceId}-${end.fiberNumber}`} className="device-table-remote">
-                          → {KIND_LABEL[end.deviceType]} {end.deviceName}{end.portLabel ? ` · ${end.portLabel}` : ''}
-                        </span>
-                      ))}
-                      {terminal.peers.length === 0 && (terminal.remote ?? []).length === 0 && <span className="device-table-free">—</span>}
+                      <button
+                        type="button"
+                        className="device-table-connect"
+                        disabled={busy}
+                        title="Conectar este puerto con otro dispositivo"
+                        onClick={(event) => { event.stopPropagation(); onOpenConnect(terminal); }}
+                      >
+                        {terminal.peers.map((peer) => <span key={peer}>{peer}</span>)}
+                        {(terminal.remote ?? []).map((end) => (
+                          <span key={`${end.deviceId}-${end.fiberNumber}`} className="device-table-remote">
+                            → {KIND_LABEL[end.deviceType]} {end.deviceName}{end.portLabel ? ` · ${end.portLabel}` : ''}
+                          </span>
+                        ))}
+                        {terminal.peers.length === 0 && (terminal.remote ?? []).length === 0 && <span className="device-table-connect-empty">+ Conectar</span>}
+                      </button>
+                      {terminal.connectionIds.length > 0 && (
+                        <button
+                          type="button"
+                          className="device-table-unlink"
+                          disabled={busy}
+                          title="Eliminar las fusiones de este puerto"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const [connectionId] = terminal.connectionIds;
+                            if (connectionId) onRemoveLink(connectionId, `la conexión de ${terminal.label}`);
+                          }}
+                        >
+                          <X size={12} aria-hidden="true" />
+                        </button>
+                      )}
                     </td>
                   )}
                 </tr>
@@ -203,11 +231,23 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
   // Hilo elegido (clic en la tabla de la fibra) esperando el clic en un puerto del dispositivo.
   const [picked, setPicked] = useState<{ fiberId: string; number: number; cableCode: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingFiberMappings, setPendingFiberMappings] = useState<Array<{ id: string; inputFiberId: string; outputFiberId: string }>>([]);
+  const [fusionModalOpen, setFusionModalOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Puerto cuyo "Fusionado con" se abrió para conectarlo con otro dispositivo.
+  const [connecting, setConnecting] = useState<DeviceTerminal | null>(null);
 
   const load = useCallback(async () => {
     try {
-      setTable(await apiJson<ConnectionsTable>(`/${ENDPOINT_BY_KIND[elementKind]}/${elementId}/table`, {}, 'No se pudo cargar la tabla de conexiones'));
+      const received = await apiJson<ConnectionsTable>(`/${ENDPOINT_BY_KIND[elementKind]}/${elementId}/table`, {}, 'No se pudo cargar la tabla de conexiones');
+      // Las instalaciones creadas antes del mapa de continuidad no tienen todavía estos campos.
+      // Normalizarlos permite abrir la tabla histórica sin bloquear la interfaz ni perder sus
+      // conexiones existentes; al guardar una fusión, el servidor la devolverá en la siguiente carga.
+      setTable({
+        ...received,
+        fiberMappings: received.fiberMappings ?? [],
+        terminals: received.terminals?.map((terminal) => ({ ...terminal, connectionIds: terminal.connectionIds ?? [] })),
+      });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar la tabla de conexiones');
     }
@@ -229,21 +269,138 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose, picked]);
 
-  const connect = async (terminal: DeviceTerminal) => {
-    if (!picked) return;
+  const connectFiber = async (
+    fiber: { fiberId: string; number: number; cableCode: string },
+    terminal: Pick<DeviceTerminal, 'key' | 'label'>,
+  ) => {
     setBusy(true);
     setError(null);
     try {
       const res = await apiFetch('/optical-connections/fiber-link', {
         method: 'POST',
-        body: JSON.stringify({ deviceType: elementKind, deviceId: elementId, fiberId: picked.fiberId, terminalKey: terminal.key }),
+        body: JSON.stringify({ deviceType: elementKind, deviceId: elementId, fiberId: fiber.fiberId, terminalKey: terminal.key }),
       });
       await readJson(res, 'No se pudo conectar el hilo');
-      setNotice(`Hilo ${picked.number} de ${picked.cableCode} conectado a ${terminal.label}.`);
+      setNotice(`Hilo ${fiber.number} de ${fiber.cableCode} conectado a ${terminal.label}.`);
       setPicked(null);
       await load();
     } catch (connectError) {
       setError(connectError instanceof Error ? connectError.message : 'No se pudo conectar el hilo');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connect = async (terminal: DeviceTerminal) => {
+    if (!picked) return;
+    await connectFiber(picked, terminal);
+  };
+
+  const spliceFibers = async (
+    source: { fiberId: string; number: number; cableCode: string },
+    target: { fiberId: string; number: number; cableCode: string },
+  ) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await readJson(
+        await apiFetch('/optical-connections/fiber-splice', {
+          method: 'POST',
+          body: JSON.stringify({ deviceType: 'MANGA', deviceId: elementId, sourceFiberId: source.fiberId, targetFiberId: target.fiberId }),
+        }),
+        'No se pudo registrar la conexión directa',
+      ) as { id: string; sourceFiberId: string; targetFiberId: string };
+      // Muestra la línea de inmediato; la siguiente carga conserva el mismo dato desde el backend.
+      setPendingFiberMappings((current) => [
+        ...current.filter((mapping) => mapping.inputFiberId !== created.sourceFiberId && mapping.outputFiberId !== created.targetFiberId),
+        { id: created.id, inputFiberId: created.sourceFiberId, outputFiberId: created.targetFiberId },
+      ]);
+      setNotice(`Entrada ${source.cableCode} · hilo ${source.number} conectada a salida ${target.cableCode} · hilo ${target.number}.`);
+      setPicked(null);
+      await load();
+    } catch (spliceError) {
+      setError(spliceError instanceof Error ? spliceError.message : 'No se pudo registrar la conexión directa');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeDirectSplice = async (connectionId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await readJson(await apiFetch(`/optical-connections/${connectionId}`, { method: 'DELETE' }), 'No se pudo borrar la conexión');
+      setPendingFiberMappings((current) => current.filter((mapping) => mapping.id !== connectionId));
+      setNotice('Se eliminó la conexión seleccionada.');
+      await load();
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : 'No se pudo borrar la conexión');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createSplitter = async (ratio: '1:8' | '1:16', name: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await readJson(
+        await apiFetch('/splitters', {
+          method: 'POST',
+          body: JSON.stringify({ boxId: elementId, ratio, name: name || undefined }),
+        }),
+        'No se pudo crear el splitter',
+      );
+      setNotice(`Splitter ${ratio} creado${name ? `: ${name}` : ''}, sin conexiones. Conecta manualmente un hilo a su entrada y otro a una salida cuando corresponda.`);
+      await load();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'No se pudo crear el splitter');
+      throw createError;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeSplitter = async (splitterId: string, splitterName: string, connectionCount: number) => {
+    const connectionsWarning = connectionCount
+      ? ` También se eliminarán ${connectionCount} conexión(es) de sus puertos.`
+      : '';
+    if (!window.confirm(`¿Eliminar el splitter ${splitterName}?${connectionsWarning} Esta acción no se puede deshacer.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await readJson(
+        await apiFetch(`/splitters/${splitterId}?force=true`, { method: 'DELETE' }),
+        'No se pudo eliminar el splitter',
+      );
+      setNotice(`Splitter ${splitterName} eliminado${connectionCount ? ' junto con sus conexiones' : ''}.`);
+      await load();
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : 'No se pudo eliminar el splitter');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveFiberDescription = async (
+    fiber: { id: string; number: number },
+    description: string,
+  ) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await readJson(
+        await apiFetch(`/fibers/${fiber.id}/configuration`, {
+          method: 'PATCH',
+          body: JSON.stringify({ description }),
+        }),
+        'No se pudo guardar la descripción del hilo',
+      );
+      setNotice(description ? `Descripción del hilo ${fiber.number} guardada.` : `Se borró la descripción del hilo ${fiber.number}.`);
+      await load();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar la descripción del hilo');
+      throw saveError;
     } finally {
       setBusy(false);
     }
@@ -279,7 +436,10 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
   };
 
   const terminals = table?.terminals ?? [];
-  const normal = elementKind === 'MANGA' && isNormalManga(table?.device.mangaType);
+  const fiberMappings = [
+    ...(table?.fiberMappings ?? []),
+    ...pendingFiberMappings.filter((pending) => !(table?.fiberMappings ?? []).some((saved) => saved.id === pending.id)),
+  ];
 
   return (
     <div className="odf-table-backdrop" onMouseDown={onClose}>
@@ -288,8 +448,8 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
           <div>
             <p>{title}</p>
             <h2 id={titleId}>{table?.device.name ?? 'Cargando...'}</h2>
-            {!normal && table?.device.capacity != null && <span>{table.portsInUse} de {table.device.capacity} {capacityLabel} con hilo asignado</span>}
-            {!normal && table && table.device.capacity == null && <span>{table.portsInUse} {capacityLabel} con hilo asignado</span>}
+            {table?.device.capacity != null && <span>{table.portsInUse} de {table.device.capacity} {capacityLabel} con hilo asignado</span>}
+            {table && table.device.capacity == null && <span>{table.portsInUse} {capacityLabel} con hilo asignado</span>}
           </div>
           <button type="button" className="btn-icon icon-button" onClick={onClose} aria-label="Cerrar tabla de conexiones"><X size={19} /></button>
         </header>
@@ -297,11 +457,11 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
         <div className="odf-table-body">
           {loading && <p className="muted">Cargando...</p>}
           {error && <DismissibleAlert className="cable-inspector-error" onClose={() => setError(null)}>{error}</DismissibleAlert>}
-          {!normal && table && terminals.length > 0 && table.cables.length > 0 && (
+          {table && terminals.length > 0 && table.cables.length > 0 && (
             <div className={`connections-sheet-bar${picked ? ' is-picking' : ''}`} role="status">
               {picked ? (
                 <>
-                  <span>Hilo <strong>{picked.number}</strong> de <strong>{picked.cableCode}</strong> elegido: haz clic en el puerto de la derecha (un puerto une hasta dos hilos).</span>
+                  <span>Hilo <strong>{picked.number}</strong> de <strong>{picked.cableCode}</strong> elegido: haz clic en el puerto de la izquierda (un puerto une hasta dos hilos).</span>
                   <button type="button" className="btn-secondary" onClick={() => setPicked(null)}>Cancelar</button>
                 </>
               ) : (
@@ -309,10 +469,29 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
               )}
             </div>
           )}
-          {normal && table && <NormalSpliceSheet data={table} deviceId={elementId} deviceName={table.device.name ?? table.device.code} onRefresh={load} />}
-          {!normal && table && (
+          {table && elementKind !== 'ODF' && table.terminals && (
+            <FiberContinuityBoard
+              cables={table.cables}
+              terminals={table.terminals}
+              directMappings={fiberMappings}
+              busy={busy}
+              onSplice={elementKind === 'MANGA' ? (source, sourceCable, target, targetCable) => spliceFibers(
+                { fiberId: source.id, number: source.number, cableCode: sourceCable },
+                { fiberId: target.id, number: target.number, cableCode: targetCable },
+              ) : undefined}
+              // El mismo control elimina una conexión registrada de manga o NAP. En una NAP no hay
+              // mapeos directos, pero sí fusiones de sus puertos y del splitter.
+              onRemoveSplice={removeDirectSplice}
+              onOpenFusion={elementKind === 'MANGA' ? () => setFusionModalOpen(true) : undefined}
+              onSaveDescription={saveFiberDescription}
+              onCreateSplitter={elementKind === 'MANGA' ? createSplitter : undefined}
+              onRemoveSplitter={removeSplitter}
+              onConnect={(fiber, cableCode, terminal) => connectFiber({ fiberId: fiber.id, number: fiber.number, cableCode }, terminal)}
+            />
+          )}
+          {table && elementKind === 'ODF' && (
             <div className="connections-sheet">
-              <div className="connections-sheet-side">
+              <div className="connections-sheet-side connections-sheet-fibers">
                 <h3 className="connections-sheet-title">Fibras</h3>
                 {table.cables.length === 0 && <p className="odf-table-empty">{emptyHint}</p>}
                 {table.cables.map((cable, index) => {
@@ -332,7 +511,7 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
                     <article className="odf-table-cable" key={cable.cableId}>
                       <h3>
                         {cableHeading(cable, index)}
-                        <small>{fiberCountLabel(cable.fiberCount)} · conexión asignada: hilos {cable.fiberFrom} a {cable.fiberTo}{cable.name ? ` · ${cable.name}` : ''}</small>
+                        <small>{fiberCountLabel(cable.fiberCount)} · hilos {cable.fiberFrom} a {cable.fiberTo}{cable.name ? ` · ${cable.name}` : ''}</small>
                       </h3>
                       {buffers.length === 0 ? (
                         <p className="odf-table-empty">
@@ -367,13 +546,13 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
                   </p>
                 ) : (
                   <DeviceTable
-                    kind={elementKind}
                     name={table.device.name ?? ''}
                     terminals={terminals}
                     picking={picked !== null}
                     busy={busy}
                     onPickTerminal={connect}
                     onRemoveLink={removeLink}
+                    onOpenConnect={(terminal) => { setPicked(null); setConnecting(terminal); }}
                   />
                 )}
                 {elementKind !== 'ODF' && (
@@ -384,6 +563,62 @@ export default function ConnectionsTableModal({ elementKind, elementId, onClose 
           )}
         </div>
       </section>
+      {connecting && table && (
+        <ConnectDeviceModal
+          deviceKind={elementKind}
+          deviceId={elementId}
+          deviceName={table.device.name ?? table.device.code}
+          terminal={connecting}
+          cables={table.cables.map((cable) => ({ ...cable, devices: cable.devices ?? [] }))}
+          onClose={() => setConnecting(null)}
+          onConnected={(message) => {
+            setConnecting(null);
+            setNotice(message);
+            load();
+          }}
+        />
+      )}
+      {fusionModalOpen && table && (
+        <FiberFusionModal
+          cables={table.cables}
+          mappings={fiberMappings}
+          terminals={table.terminals ?? []}
+          busy={busy}
+          onClose={() => setFusionModalOpen(false)}
+          onFuse={(source, target) => spliceFibers(
+            { fiberId: source.fiber.id, number: source.fiber.number, cableCode: source.cable.code },
+            { fiberId: target.fiber.id, number: target.fiber.number, cableCode: target.cable.code },
+          )}
+          onFuseWithSplitter={async (source, target, input, output) => {
+            setBusy(true);
+            setError(null);
+            try {
+              await readJson(
+                await apiFetch('/optical-connections/fiber-splitter-route', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    deviceId: elementId,
+                    sourceFiberId: source?.fiber.id,
+                    targetFiberId: target.fiber.id,
+                    splitterInputPortId: input.key.split(':')[1],
+                    splitterOutputPortId: output.key.split(':')[1],
+                  }),
+                }),
+                'No se pudo conectar la ruta por el splitter',
+              );
+              setNotice(source
+                ? `${source.cable.code} · hilo ${source.fiber.number} entra al splitter y su salida ${output.label} continúa hacia ${target.cable.code} · hilo ${target.fiber.number}.`
+                : `La salida ${output.label} del splitter continúa hacia ${target.cable.code} · hilo ${target.fiber.number}.`);
+              await load();
+            } catch (routeError) {
+              setError(routeError instanceof Error ? routeError.message : 'No se pudo conectar la ruta por el splitter');
+              throw routeError;
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
