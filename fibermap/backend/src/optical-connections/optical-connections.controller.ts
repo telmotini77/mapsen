@@ -1,9 +1,10 @@
-import { SetNormalMappingDto } from './dto/set-normal-mapping.dto.js';
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, BadRequestException } from '@nestjs/common';
 import { OpticalConnectionsService } from './optical-connections.service.js';
 import { CreateOpticalConnectionDto } from './dto/create-optical-connection.dto.js';
 import { UpdateOpticalConnectionDto } from './dto/update-optical-connection.dto.js';
 import { CreateFiberLinkDto } from './dto/create-fiber-link.dto.js';
+import { CreateFiberSpliceDto } from './dto/create-fiber-splice.dto.js';
+import { CreateFiberSplitterRouteDto } from './dto/create-fiber-splitter-route.dto.js';
 
 @Controller('optical-connections')
 export class OpticalConnectionsController {
@@ -20,9 +21,16 @@ export class OpticalConnectionsController {
     return this.opticalConnectionsService.createFiberLink(dto);
   }
 
-  @Post('normal-mapping')
-  setNormalMapping(@Body() dto: SetNormalMappingDto) {
-    return this.opticalConnectionsService.setNormalMapping(dto);
+  // Mapeo interno entrada → salida de una manga; no ocupa ni crea un puerto de empalme.
+  @Post('fiber-splice')
+  createFiberSplice(@Body() dto: CreateFiberSpliceDto) {
+    return this.opticalConnectionsService.createFiberSplice(dto);
+  }
+
+  // Derivación de un splitter: hilo de entrada → entrada común → salida elegida → hilo de salida.
+  @Post('fiber-splitter-route')
+  createFiberSplitterRoute(@Body() dto: CreateFiberSplitterRouteDto) {
+    return this.opticalConnectionsService.createFiberSplitterRoute(dto);
   }
 
   @Get()

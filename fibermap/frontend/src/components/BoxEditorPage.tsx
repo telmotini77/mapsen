@@ -1,10 +1,8 @@
-import { isNormalManga } from '../lib/network';
-import NormalSpliceSheet, { type SpliceSheetData } from './NormalSpliceSheet';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { GitPullRequest, RefreshCw, Search, X, Trash2 } from 'lucide-react';
+import { GitPullRequest, Search, X, Trash2 } from 'lucide-react';
 import { apiFetch, apiJson, apiList } from '../lib/api';
 import { MANGA_TYPE_LABELS, readJson } from '../lib/network';
-import { fiberColorHex, fiberColorLabel, textOnColor } from '../lib/fiberColors';
+import { fiberColorLabel } from '../lib/fiberColors';
 import './BoxEditorPage.css';
 import DismissibleAlert from './DismissibleAlert';
 
@@ -25,6 +23,7 @@ interface SplitterPort {
 interface Splitter {
   id: string;
   code: string;
+  name: string | null;
   ratio: string;
   inputCount: number;
   outputCount: number;
@@ -66,20 +65,10 @@ interface HiloOption {
   label: string;
 }
 
-// Puerto de la caja con los hilos que une (lo mismo que muestra su tabla de conexiones en el mapa).
-interface SheetTerminal {
-  key: string;
-  group: string;
-  label: string;
-  fibers: Array<{ fiberId: string; cableCode: string; number: number; color: string }>;
-  peers: string[];
-}
-
 interface TerminalOption {
   refType: string; // BOX_PORT | SPLITTER_INPUT | SPLITTER_OUTPUT
   refId: string;
   label: string;
-  name: string;
   status: string;
   splitterId?: string;
 }
@@ -87,23 +76,20 @@ interface TerminalOption {
 interface BoxEditorPageProps {
   initialBoxId?: string | null;
   onConsumeInitialBoxId?: () => void;
-  // Avisa qué caja quedó abierta, para volver a ella al regresar a esta sección.
-  onBoxOpened?: (id: string, kind: 'MANGA' | 'NAP') => void;
 }
 
-export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onBoxOpened }: BoxEditorPageProps) {
+export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId }: BoxEditorPageProps) {
   const [searching, setSearching] = useState(false);
   const [allBoxes, setAllBoxes] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [box, setBox] = useState<BoxDetail | null>(null);
-  const [normalTable, setNormalTable] = useState<SpliceSheetData | null>(null);
   const [connections, setConnections] = useState<OpticalConnection[]>([]);
   const [hiloOptions, setHiloOptions] = useState<HiloOption[]>([]);
-  const [sheetTerminals, setSheetTerminals] = useState<SheetTerminal[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [portCount, setPortCount] = useState('4');
+  const [splitterName, setSplitterName] = useState('');
 
   const [sourceRef, setSourceRef] = useState('');
   const [targetRef, setTargetRef] = useState('');
@@ -138,12 +124,11 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
       const [boxData, connData, table] = await Promise.all([
         apiJson(`/boxes/${boxId}`, {}, 'No se pudo cargar la caja'),
         apiList(`/optical-connections?boxId=${boxId}`, 'No se pudieron cargar las conexiones'),
-        apiJson<SpliceSheetData & { terminals?: SheetTerminal[] }>(
+        apiJson<{ cables: Array<{ code: string; buffers: Array<{ fibers: Array<{ id: string; number: number; color: string }> }> }> }>(
           `/boxes/${boxId}/table`, {}, 'No se pudieron cargar los hilos de la caja',
         ),
       ]);
       setBox(boxData);
-      setNormalTable(table);
       setConnections(connData);
       // Los hilos que llegan a esta caja salen de sus cables conectados (no hace falta asignarlos aparte).
       setHiloOptions(
@@ -156,8 +141,6 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
           ),
         ),
       );
-      setSheetTerminals(table.terminals ?? []);
-      onBoxOpened?.(boxData.id, boxData.type === 'NAP' ? 'NAP' : 'MANGA');
       setSearching(false);
       setSourceRef('');
       setTargetRef('');
@@ -198,18 +181,14 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
       refType: 'BOX_PORT',
       refId: p.id,
       label: `Puerto caja #${p.number} (${p.type}) — ${p.status}`,
-      name: `Puerto caja #${p.number} (${p.type})`,
       status: p.status,
     }));
-    // Un splitter 1:8 tiene 8 puertos (1:16, 16), cada uno de entrada y salida: el antiguo puerto
-    // común solo se lista si ya está en uso (dato anterior).
+    // La entrada común recibe la fibra alimentadora; cada salida continúa a un cable o puerto DROP.
     const splitterPorts: TerminalOption[] = box.splitters.flatMap((s) =>
-      s.ports.filter((p) => p.portType !== 'INPUT' || p.status !== 'FREE').map((p) => ({
+      s.ports.map((p) => ({
         refType: p.portType === 'INPUT' ? 'SPLITTER_INPUT' : 'SPLITTER_OUTPUT',
         refId: p.id,
-        // Todo puerto es de entrada y salida: se numeran seguidos (el lado común del splitter es el 1).
-        label: `${s.code} · Puerto ${p.portType === 'INPUT' ? 'común (anterior)' : p.number} — ${p.status}`,
-        name: `${s.code} · Puerto ${p.portType === 'INPUT' ? 'común (anterior)' : p.number}`,
+        label: `${s.code} · ${p.portType === 'INPUT' ? 'Entrada' : 'Salida'} ${p.number} — ${p.status}`,
         status: p.status,
         splitterId: s.id,
       })),
@@ -232,15 +211,12 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
     ? terminals.filter((t) => t.refType === 'BOX_PORT' && dropPortIds.has(t.refId))
     : terminals.filter((t) => !sourceTerminal?.splitterId || t.splitterId !== sourceTerminal.splitterId);
 
-  const hiloLabel = (fiberId: string) => hiloOptions.find((h) => h.fiberId === fiberId)?.label;
   const findTerminalLabel = (t: Termination) => {
-    // Enlaces hilo → puerto hechos desde la tabla de conexiones del mapa: su origen es el hilo mismo.
-    if (t.entityType === 'FIBER') return hiloLabel(t.entityId) ?? 'Hilo de la fibra';
+    // Enlaces hilo → puerto hechos desde la tabla de conexiones: su origen es el hilo mismo.
+    if (t.entityType === 'FIBER') return 'Hilo de la fibra';
     const match = terminals.find((opt) => opt.refType === t.entityType && opt.refId === t.entityId);
-    return match?.name ?? `${t.entityType} (${t.entityId.slice(0, 8)})`;
+    return match?.label ?? `${t.entityType} (${t.entityId.slice(0, 8)})`;
   };
-  // Puertos que ya unen algún hilo (hechos aquí o desde la tabla de conexiones del mapa).
-  const portsWithFibers = sheetTerminals.filter((t) => t.fibers.length > 0);
 
   const handleGeneratePorts = async () => {
     if (!box) return;
@@ -339,22 +315,22 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
   };
 
   // Una caja NAP suma como máximo 16 salidas de splitter: un 1:16, o uno o dos 1:8. Una manga de
-  // distribución lleva un único splitter primario 1:8; las demás mangas no llevan splitter.
+  // distribución puede organizar varios splitters, elegidos por el operador.
   const NAP_MAX_OUTPUTS = 16;
   const usedOutputs = (box?.splitters ?? []).reduce((sum, s) => sum + s.outputCount, 0);
   const addableRatios: string[] = !box
     ? []
     : box.type === 'NAP'
       ? ['1:8', '1:16'].filter((ratio) => usedOutputs + Number(ratio.split(':')[1]) <= NAP_MAX_OUTPUTS)
-      : box.mangaType === 'DISTRIBUCION' && box.splitters.length === 0
-        ? ['1:8']
+      : box.mangaType === 'DISTRIBUCION'
+        ? ['1:8', '1:16']
         : [];
   const canExpand = (s: Splitter) => box?.type === 'NAP' && s.ratio === '1:8' && usedOutputs + 8 <= NAP_MAX_OUTPUTS;
   const splitterNotice =
     box?.type === 'NAP'
       ? `Una caja NAP puede tener un splitter 1:16, o uno o dos 1:8 (máximo ${NAP_MAX_OUTPUTS} salidas; usa ${usedOutputs}).`
       : box?.mangaType === 'DISTRIBUCION'
-        ? 'Una manga de distribución lleva un único splitter primario 1:8.'
+        ? 'Una manga de distribución puede tener varios splitters 1:8 o 1:16.'
         : `Una manga ${MANGA_TYPE_LABELS[box?.mangaType ?? '']?.toLowerCase() ?? ''} no divide la señal: solo las mangas de distribución llevan splitter.`;
 
   const handleAddSplitter = async (ratio: string) => {
@@ -362,9 +338,10 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
     setError(null);
     try {
       await readJson(
-        await apiFetch('/splitters', { method: 'POST', body: JSON.stringify({ boxId: box.id, ratio }) }),
+        await apiFetch('/splitters', { method: 'POST', body: JSON.stringify({ boxId: box.id, ratio, name: splitterName.trim() || undefined }) }),
         'No se pudo generar el splitter',
       );
+      setSplitterName('');
       refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo generar el splitter');
@@ -411,20 +388,13 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
                     : 'Caja NAP'}
                 </span>
               </div>
-              <div className="box-editor-actions">
-                <button className="btn-secondary" onClick={refresh} aria-label="Actualizar datos de la caja">
-                  <RefreshCw size={14} aria-hidden="true" /> Actualizar
-                </button>
-                <button className="btn-secondary" onClick={openSearch} aria-label="Cambiar de caja">
-                  <Search size={14} aria-hidden="true" /> Cambiar caja
-                </button>
-              </div>
+              <button className="btn-secondary" onClick={openSearch} aria-label="Cambiar de caja">
+                <Search size={14} aria-hidden="true" /> Cambiar caja
+              </button>
             </div>
 
             {error && <DismissibleAlert className="editor-error" onClose={() => setError(null)}>{error}</DismissibleAlert>}
 
-            {isNormalManga(box.mangaType) && normalTable && <NormalSpliceSheet data={normalTable} deviceId={box.id} deviceName={box.name ?? box.code} onRefresh={() => loadBox(box.id)} />}
-            {!isNormalManga(box.mangaType) && <>
             <div className="box-editor-grid">
               <div className="box-editor-panel">
                 <h4>Puertos de caja ({box.ports.length})</h4>
@@ -469,7 +439,7 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
                           aria-controls={`splitter-ports-${s.id}`}
                         >
                           <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-                          <span>{s.code} ({s.ratio})</span>
+                          <span>{s.name || s.code} ({s.ratio})</span>
                           <span className="muted">{usedCount}/{s.outputCount} en uso</span>
                         </button>
                         <div className="splitter-actions">
@@ -489,9 +459,9 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
                         </div>
                         {expanded && (
                           <ul className="port-list" id={`splitter-ports-${s.id}`} aria-label={`Puertos de ${s.code}`}>
-                            {s.ports.filter((p) => p.portType !== 'INPUT' || p.status !== 'FREE').map((p) => (
+                            {s.ports.map((p) => (
                               <li key={p.id} className={`port-item status-${p.status.toLowerCase()}`}>
-                                Puerto {p.portType === 'INPUT' ? 'común (anterior)' : p.number} · {p.status}
+                                {p.portType === 'INPUT' ? 'Entrada' : `Salida ${p.number}`} · {p.status}
                               </li>
                             ))}
                           </ul>
@@ -503,6 +473,10 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
 
                 {addableRatios.length > 0 && (
                   <div className="splitter-actions splitter-add">
+                    <label className="splitter-name-field">
+                      Nombre del splitter
+                      <input value={splitterName} maxLength={100} placeholder="Ej.: SPL-PRINCIPAL" onChange={(event) => setSplitterName(event.target.value)} />
+                    </label>
                     {addableRatios.map((ratio) => (
                       <button key={ratio} type="button" className="btn-secondary splitter-expand" onClick={() => handleAddSplitter(ratio)}>
                         + Generar splitter {ratio}
@@ -583,30 +557,6 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
                   : 'Elige los dos puertos que se unen; el hilo de cada lado es opcional (son los hilos de los cables que llegan a esta caja). El origen y el destino no pueden ser puertos del mismo splitter — un splitter reparte señal, no se conecta consigo mismo.'}
               </p>
 
-              <h4>Hilos por puerto ({portsWithFibers.length})</h4>
-              {portsWithFibers.length === 0 ? (
-                <p className="muted">Ningún puerto une hilos todavía. Conéctalos aquí o desde la tabla de conexiones de la caja en el mapa.</p>
-              ) : (
-                <ul className="connection-list port-fiber-list">
-                  {portsWithFibers.map((t) => (
-                    <li key={t.key}>
-                      <span>
-                        <strong>{t.label}</strong>{' '}
-                        {t.fibers.map((f, i) => (
-                          <span key={f.fiberId}>
-                            {i > 0 && ' ⟷ '}
-                            <span className="port-fiber-chip" style={{ backgroundColor: fiberColorHex(f.color), color: textOnColor(f.color) }}>
-                              {f.cableCode} · hilo {f.number}
-                            </span>
-                          </span>
-                        ))}
-                        {t.peers.length > 0 && <small> · fusionado con {t.peers.join(', ')}</small>}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
               <h4>Conexiones activas ({connections.length})</h4>
               {connections.length === 0 ? (
                 <p className="muted">Aún no hay fusiones registradas en esta caja.</p>
@@ -617,9 +567,7 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
                       <span>
                         {findTerminalLabel(c.sourceTermination)} ⟷ {findTerminalLabel(c.targetTermination)}
                         {(c.sourceFiber || c.targetFiber) && (
-                          c.sourceTermination.entityType === 'FIBER'
-                            ? <small> · desde la tabla de conexiones</small>
-                            : <small> · {c.sourceFiber ? hiloLabel(c.sourceFiber.id) ?? `hilo ${c.sourceFiber.number}` : 'sin hilo'} ⟷ {c.targetFiber ? hiloLabel(c.targetFiber.id) ?? `hilo ${c.targetFiber.number}` : 'sin hilo'}</small>
+                          <small> · {c.sourceFiber ? `hilo ${c.sourceFiber.number}` : 'sin hilo'} ⟷ {c.targetFiber ? `hilo ${c.targetFiber.number}` : 'sin hilo'}</small>
                         )}
                       </span>
                       <button
@@ -634,7 +582,6 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onB
                 </ul>
               )}
             </div>
-            </>}
           </div>
         )}
       </div>

@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 // Reglas de la red FTTH de FiberMap. Son los únicos tipos de elemento que existen:
 // ODF, Fibra, Manga y Caja NAP (el splitter es un componente interno de mangas de
 // distribución y cajas NAP, no un elemento independiente en el mapa).
@@ -98,17 +100,32 @@ export interface FiberStop {
 //   antes haya dejado hilos en cajas NAP: entonces solo recibe los hilos que quedan disponibles
 //   (el tramo continuo más largo de hilos libres, porque la conexión guarda un rango).
 export function defaultFiberRanges(stops: FiberStop[], fiberCount: number) {
+  if (!CABLE_FIBER_COUNTS.includes(fiberCount as typeof CABLE_FIBER_COUNTS[number])) throw new BadRequestException('Cantidad de hilos no permitida');
+  for (const stop of stops) {
+    const r = stop.existing;
+    if (r && (!Number.isInteger(r.fiberFrom) || !Number.isInteger(r.fiberTo) || r.fiberFrom < 1 || r.fiberTo < r.fiberFrom || r.fiberTo > fiberCount)) {
+      throw new BadRequestException('El rango guardado está fuera de la capacidad de la fibra');
+    }
+  }
+  // Reservar primero los rangos existentes, incluso los situados después de una nueva NAP.
+  const reserved = new Set<number>();
+  for (const stop of stops) if (stop.kind === 'NAP' && stop.existing) {
+    for (let n = stop.existing.fiberFrom; n <= stop.existing.fiberTo; n++) reserved.add(n);
+  }
   const dropped = new Set<number>();
   let fedFromUpstream = false;
   return stops.map((stop, index) => {
     let range: { fiberFrom: number; fiberTo: number };
     if (stop.existing) {
-      range = { fiberFrom: Math.min(stop.existing.fiberFrom, fiberCount), fiberTo: Math.min(stop.existing.fiberTo, fiberCount) };
+      range = { ...stop.existing };
     } else if (stop.kind === 'NAP') {
-      const free = Array.from({ length: fiberCount }, (_, i) => i + 1).find((n) => !dropped.has(n)) ?? fiberCount;
+      const free = Array.from({ length: fiberCount }, (_, i) => i + 1).find((n) => !dropped.has(n) && !reserved.has(n));
+      if (free === undefined) throw new BadRequestException('No hay hilos disponibles para otra caja NAP');
       range = { fiberFrom: free, fiberTo: free };
     } else if (index > 0 && fedFromUpstream && dropped.size > 0) {
-      range = longestFreeRun(dropped, fiberCount) ?? { fiberFrom: 1, fiberTo: fiberCount };
+      const available = longestFreeRun(dropped, fiberCount);
+      if (!available) throw new BadRequestException('No hay hilos disponibles para continuar hacia la manga u ODF');
+      range = available;
     } else {
       range = { fiberFrom: 1, fiberTo: fiberCount };
     }

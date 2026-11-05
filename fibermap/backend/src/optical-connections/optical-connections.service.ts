@@ -1,11 +1,11 @@
-import { SetNormalMappingDto } from './dto/set-normal-mapping.dto.js';
-import { isNormalManga } from '../domain/network-rules.js';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { OpticalTopologyValidatorService } from '../optical-topology-validator/optical-topology-validator.service.js';
 import { CreateOpticalConnectionDto } from './dto/create-optical-connection.dto.js';
 import { UpdateOpticalConnectionDto } from './dto/update-optical-connection.dto.js';
 import { CreateFiberLinkDto } from './dto/create-fiber-link.dto.js';
+import { CreateFiberSpliceDto } from './dto/create-fiber-splice.dto.js';
+import { CreateFiberSplitterRouteDto } from './dto/create-fiber-splitter-route.dto.js';
 import { ConnectionsTableService, MAX_FIBERS_PER_PORT, boxPortLabel, splitterPortNumber } from '../cables/connections-table.service.js';
 
 // Extremo de un hilo dentro de un dispositivo (enlaces hilo → puerto de la tabla de conexiones).
@@ -26,155 +26,20 @@ export class OpticalConnectionsService {
     private connectionsTable: ConnectionsTableService,
   ) {}
 
-  async assignCablePorts(cableId: string) {
-    const stops = await this.prisma.cableConnection.findMany({ where: { cableId }, orderBy: { sequence: 'asc' } });
-    for (const stop of stops) {
-      const descriptions: string[] = [];
-      const deviceType = stop.elementType as 'ODF' | 'MANGA' | 'NAP';
-      const isOdf = deviceType === 'ODF';
-      const device = isOdf
-        ? await this.prisma.odf.findUnique({ where: { id: stop.elementId } })
-        : await this.prisma.box.findUnique({ where: { id: stop.elementId } });
-      if (!device || device.deletedAt) continue;
-      if ('mangaType' in device && isNormalManga(device.mangaType)) {
-        await this.assignNormalSplices(stop);
-        continue;
-      }
-      const numbers = new Set([stop.fiberFrom]);
-      const index = stops.indexOf(stop);
-      for (const neighbor of [stops[index - 1], stops[index + 1]]) {
-        if (neighbor && neighbor.fiberFrom >= stop.fiberFrom && neighbor.fiberFrom <= stop.fiberTo) numbers.add(neighbor.fiberFrom);
-      }
-      for (const number of numbers) {
-        const fiber = await this.prisma.fiber.findFirst({ where: { cable: { cableId }, number, deletedAt: null } });
-        if (!fiber) throw new BadRequestException(`No existe el hilo ${number}.`);
-        const scope = isOdf ? { odfId: stop.elementId } : { boxId: stop.elementId };
-        const existing = await this.prisma.opticalConnection.findFirst({ where: { deletedAt: null, sourceTermination: { entityType: FIBER_ENTITY, entityId: fiber.id, ...scope } } });
-        if (existing) continue;
-        const sheet = await this.connectionsTable.build(deviceType, stop.elementId, device.capacity);
-        const eligible = sheet.terminals.filter((t) => !t.key.startsWith('SPLITTER_INPUT:'));
-        const available = eligible.find((t) => t.fibers.length === 0 && t.status === 'FREE')
-          ?? eligible.find((t) => t.fibers.length > 0 && t.fibers.length < MAX_FIBERS_PER_PORT);
-        let terminalKey = available?.key;
-        if (!terminalKey && !isOdf) {
-          const ports = await this.prisma.boxPort.findMany({ where: { boxId: stop.elementId }, select: { number: true } });
-          const used = new Set(ports.map((p) => p.number));
-          const freeNumber = Array.from({ length: device.capacity ?? 1 }, (_, i) => i + 1).find((n) => !used.has(n));
-          if (freeNumber) {
-            const port = await this.prisma.boxPort.create({ data: { boxId: stop.elementId, number: freeNumber, type: 'EMPALME' } });
-            terminalKey = `BOX_PORT:${port.id}`;
-          }
-        }
-        if (!terminalKey) throw new ConflictException(`${device.code} no tiene puertos disponibles para el hilo ${number}.`);
-        const connection = await this.createFiberLink({ deviceType, deviceId: stop.elementId, fiberId: fiber.id, terminalKey });
-        const description = `Conexión automática: hilo ${number} → ${available?.label ?? 'Puerto de empalme'} de ${device.code}.`;
-        descriptions.push(description);
-        await this.prisma.opticalConnection.update({ where: { id: connection.id }, data: { notes: description } });
-      }
-      if (descriptions.length && !stop.notes) {
-        await this.prisma.cableConnection.update({ where: { id: stop.id }, data: { notes: descriptions.join(' ') } });
-      }
-    }
-  }
-
-  private async assignNormalSplices(stop: { cableId: string; elementId: string; fiberFrom: number; fiberTo: number; role: string }) {
-    const others = await this.prisma.cableConnection.findMany({
-      where: { elementId: stop.elementId, elementType: 'MANGA', cableId: { not: stop.cableId }, cable: { deletedAt: null } },
-      orderBy: { cable: { createdAt: 'asc' } },
-    });
-    for (let number = stop.fiberFrom; number <= stop.fiberTo; number++) {
-      const fiber = await this.prisma.fiber.findFirst({ where: { cable: { cableId: stop.cableId }, number, deletedAt: null } });
-      if (!fiber) continue;
-      const isUsed = async (id: string) => !!await this.prisma.opticalConnection.findFirst({
-        where: { deletedAt: null, OR: [
-          { sourceTermination: { entityType: { in: ['FIBER', 'FIBER_IN', 'FIBER_OUT'] }, entityId: id, boxId: stop.elementId } },
-          { targetTermination: { entityType: { in: ['FIBER', 'FIBER_IN', 'FIBER_OUT'] }, entityId: id, boxId: stop.elementId } },
-        ] },
-      });
-      if (await isUsed(fiber.id)) continue;
-      for (const other of others) {
-        if (number < other.fiberFrom || number > other.fiberTo) continue;
-        // START sale de la manga; END llega. Un cable de paso puede continuar sin empalme.
-        if (stop.role === 'START' && other.role === 'START') continue;
-        if (stop.role === 'END' && other.role === 'END') continue;
-        const peer = await this.prisma.fiber.findFirst({ where: { cable: { cableId: other.cableId }, number, deletedAt: null } });
-        if (!peer || await isUsed(peer.id)) continue;
-        const sourceId = stop.role === 'START' ? peer.id : fiber.id;
-        const targetId = stop.role === 'START' ? fiber.id : peer.id;
-        await this.create({ boxId: stop.elementId, sourceType: FIBER_ENTITY, sourceId, targetType: FIBER_ENTITY, targetId,
-          connectionType: 'SPLICE', notes: `Empalme automático: hilo ${number} de entrada con hilo ${number} de salida.` });
-        break;
-      }
-    }
-  }
-
-  // Entrada y salida son extremos distintos, incluso en un cable que atraviesa la manga.
-  async setNormalMapping(dto: SetNormalMappingDto) {
-    return this.prisma.$transaction(async (tx) => {
-      const box = await tx.box.findUnique({ where: { id: dto.boxId } });
-      if (!box || box.deletedAt || box.type !== 'MANGA' || !isNormalManga(box.mangaType)) throw new BadRequestException('Solo las mangas normales, de paso y de empalme permiten cambiar la salida.');
-      const [input, output] = await Promise.all([
-        tx.fiber.findUnique({ where: { id: dto.sourceFiberId } }),
-        tx.fiber.findUnique({ where: { id: dto.targetFiberId } }),
-      ]);
-      if (!input || !output || input.deletedAt || output.deletedAt) throw new BadRequestException('El hilo seleccionado no existe.');
-      const stops = await tx.cableConnection.findMany({ where: { elementId: box.id, elementType: 'MANGA', cable: { deletedAt: null } } });
-      const incoming = stops.find((stop) => stop.cableId === input.cableId);
-      const outgoing = stops.find((stop) => stop.cableId === output.cableId);
-      if (!incoming || !outgoing) throw new BadRequestException('Ambas fibras deben pasar por esta manga.');
-      if (incoming.role === 'START' || outgoing.role === 'END') throw new BadRequestException('Selecciona un hilo de entrada y un hilo de salida.');
-      const active = await tx.opticalConnection.findMany({ where: {
-        deletedAt: null, sourceTermination: { boxId: box.id, entityType: { in: ['FIBER', 'FIBER_IN'] } },
-        targetTermination: { entityType: { in: ['FIBER', 'FIBER_OUT'] } },
-      } });
-      const current = active.find((link) => link.sourceFiberId === input.id);
-      const occupied = active.find((link) => link.targetFiberId === output.id && link.sourceFiberId !== input.id);
-      // Al elegir una salida ocupada se intercambian ambas salidas, conservando las entradas.
-      const implicitOutputFree = incoming.role === 'PASS' && !active.some((link) => link.targetFiberId === input.id);
-      const previousOutput = current?.targetFiberId ?? (implicitOutputFree ? input.id : null);
-      let displacedInput = occupied?.sourceFiberId ?? null;
-      if (!occupied && outgoing.role === 'PASS' && output.id !== input.id && !active.some((link) => link.sourceFiberId === output.id)) displacedInput = output.id;
-      if (displacedInput && !previousOutput) throw new ConflictException('La salida está ocupada. Elige otra salida o asigna primero una salida libre a esta entrada.');
-      const ids = [current?.id, occupied?.id].filter((id): id is string => !!id);
-      if (ids.length) await tx.opticalConnection.updateMany({ where: { id: { in: ids } }, data: { deletedAt: new Date() } });
-      const save = async (sourceId: string, targetId: string) => {
-        const endpoint = async (entityType: string, entityId: string) =>
-          await tx.opticalTermination.findFirst({ where: { boxId: box.id, entityType, entityId } })
-          ?? await tx.opticalTermination.create({ data: { boxId: box.id, entityType, entityId, type: 'FIBER_END' } });
-        const a = await endpoint('FIBER_IN', sourceId);
-        const b = await endpoint('FIBER_OUT', targetId);
-        return tx.opticalConnection.create({ data: {
-          sourceTerminationId: a.id, targetTerminationId: b.id, sourceFiberId: sourceId, targetFiberId: targetId,
-          connectionType: 'SPLICE', notes: 'Conexión de entrada a salida modificada en la tabla de empalmes.',
-        } });
-      };
-      const result = await save(input.id, output.id);
-      if (displacedInput && previousOutput) await save(displacedInput, previousOutput);
-      for (const stop of stops) {
-        const selected = [input, output].filter((fiber) => fiber.cableId === stop.cableId).map((fiber) => fiber.number);
-        if (!selected.length) continue;
-        const fiberFrom = Math.min(stop.fiberFrom, ...selected);
-        const fiberTo = Math.max(stop.fiberTo, ...selected);
-        if (fiberFrom !== stop.fiberFrom || fiberTo !== stop.fiberTo) await tx.cableConnection.update({ where: { id: stop.id }, data: { fiberFrom, fiberTo } });
-      }
-      return result;
-    });
-  }
-
   private async resolveTermination(type: string, entityId: string, boxId: string) {
     const existing = await this.prisma.opticalTermination.findFirst({
-      where: { entityType: type, entityId, boxId },
+      where: { entityType: type, entityId },
     });
     if (existing) return existing;
 
     return this.prisma.opticalTermination.create({
-      data: { type: type === FIBER_ENTITY ? 'FIBER_END' : type, entityType: type, entityId, boxId },
+      data: { type, entityType: type, entityId, boxId },
     });
   }
 
   private setPortStatus(type: string, entityId: string, status: string) {
     // El extremo "hilo" de un enlace hilo→puerto no es un puerto: no tiene estado.
-    if (['FIBER', 'FIBER_IN', 'FIBER_OUT'].includes(type)) return Promise.resolve(null);
+    if (type === FIBER_ENTITY) return Promise.resolve(null);
     if (type === 'ODF_PORT') {
       return this.prisma.odfPort.update({ where: { id: entityId }, data: { status } });
     }
@@ -193,15 +58,11 @@ export class OpticalConnectionsService {
       ? await this.prisma.odf.findUnique({ where: { id: dto.deviceId }, select: { id: true, deletedAt: true } })
       : await this.prisma.box.findUnique({ where: { id: dto.deviceId }, select: { id: true, type: true, deletedAt: true } });
     if (!device || device.deletedAt) throw new NotFoundException('Dispositivo no encontrado');
-    if (!isOdf) {
-      const box = await this.prisma.box.findUnique({ where: { id: dto.deviceId } });
-      if (isNormalManga(box?.mangaType)) throw new BadRequestException('Esta manga conecta hilo con hilo, sin puertos.');
-    }
 
     const fiber = await this.prisma.fiber.findUnique({ where: { id: dto.fiberId }, include: { cable: { include: { cable: { select: { code: true } } } } } });
     if (!fiber || fiber.deletedAt) throw new BadRequestException('El hilo no existe');
     const covered = await this.prisma.cableConnection.findFirst({
-      where: { cableId: fiber.cable.cableId, elementType: dto.deviceType, elementId: dto.deviceId, cable: { deletedAt: null } },
+      where: { cableId: fiber.cable.cableId, elementType: dto.deviceType, elementId: dto.deviceId, fiberFrom: { lte: fiber.number }, fiberTo: { gte: fiber.number } },
     });
     if (!covered) throw new BadRequestException(`El hilo ${fiber.number} de ${fiber.cable.cable.code} no llega a este dispositivo.`);
 
@@ -229,10 +90,11 @@ export class OpticalConnectionsService {
       portId = port.id;
       portLabel = boxPortLabel(port);
     } else if (portType === 'BOX_PORT_NUMBER') {
-      // Posición de empalme de una manga de paso/empalme: se crea la primera vez que se usa.
+      // Posición de empalme directo de una manga: se crea la primera vez que se usa. Una manga de
+      // distribución también puede empalmar entrada → salida sin utilizar el splitter.
       const number = Number(portRef);
       const box = await this.prisma.box.findUnique({ where: { id: dto.deviceId }, select: { type: true, mangaType: true, capacity: true } });
-      if (box?.type !== 'MANGA' || box.mangaType === 'DISTRIBUCION' || !Number.isInteger(number) || number < 1 || number > (box.capacity ?? 0)) {
+      if (box?.type !== 'MANGA' || !Number.isInteger(number) || number < 1 || number > (box.capacity ?? 0)) {
         throw new BadRequestException('Puerto de empalme no válido');
       }
       const port = await this.prisma.boxPort.upsert({
@@ -246,7 +108,6 @@ export class OpticalConnectionsService {
     } else if (portType === 'SPLITTER_INPUT' || portType === 'SPLITTER_OUTPUT') {
       const port = await this.prisma.splitterPort.findUnique({ where: { id: portRef }, include: { splitter: true } });
       if (!port || port.splitter.deletedAt || port.splitter.boxId !== dto.deviceId) throw new BadRequestException('El puerto de splitter no es de esta caja');
-      if (port.portType === 'INPUT') throw new BadRequestException('El splitter solo usa sus puertos 1 a 8 (o 1 a 16); el puerto común ya no se conecta.');
       portId = port.id;
       portLabel = `${port.splitter.code} · Puerto ${splitterPortNumber(port)}`;
     } else {
@@ -261,13 +122,19 @@ export class OpticalConnectionsService {
     if (active.some((c) => c.sourceTermination.entityId === fiber.id)) {
       throw new ConflictException(`El hilo ${fiber.number} ya está en otro puerto de este dispositivo. Quítalo primero.`);
     }
-    // Cada puerto une dos hilos (uno por lado). Se cuenta lo que muestra la hoja, que en el ODF incluye
-    // el hilo que llega por defecto a ese puerto.
+    // Un puerto de empalme une hasta dos hilos. En un splitter, cada extremo físico (entrada o salida)
+    // recibe exactamente un hilo; el reparto entre entrada y salidas lo realiza el splitter internamente.
     const sheet = await this.connectionsTable.build(dto.deviceType as 'ODF' | 'MANGA' | 'NAP', dto.deviceId, isOdf ? (await this.prisma.odf.findUnique({ where: { id: dto.deviceId }, select: { capacity: true } }))?.capacity : null);
     const sheetKey = isOdf ? `ODF_PORT:${Number(portRef)}` : `${storedType}:${portId}`;
     const onPort = sheet.terminals.find((t) => t.key === sheetKey)?.fibers.filter((f) => f.fiberId !== fiber.id) ?? [];
-    if (onPort.length >= MAX_FIBERS_PER_PORT) {
-      throw new ConflictException(`${portLabel} ya une dos hilos (${onPort.map((f) => `${f.cableCode} hilo ${f.number}`).join(' y ')}). Quita uno primero.`);
+    const portCapacity = storedType === 'SPLITTER_INPUT' || storedType === 'SPLITTER_OUTPUT' ? 1 : MAX_FIBERS_PER_PORT;
+    if (onPort.length >= portCapacity) {
+      const detail = onPort.map((f) => `${f.cableCode} hilo ${f.number}`).join(' y ');
+      throw new ConflictException(
+        portCapacity === 1
+          ? `${portLabel} ya tiene su hilo conectado (${detail}). Quítalo primero.`
+          : `${portLabel} ya une dos hilos (${detail}). Quita uno primero.`,
+      );
     }
 
     const termination = (entityType: string, entityId: string) =>
@@ -280,20 +147,9 @@ export class OpticalConnectionsService {
       data: { sourceTerminationId: source.id, targetTerminationId: target.id, sourceFiberId: fiber.id, targetFiberId: fiber.id, connectionType: 'SPLICE' },
       include: CONNECTION_INCLUDE,
     });
-    await this.extendDeviceFiberRange(fiber.cable.cableId, dto.deviceType, dto.deviceId, fiber.number);
     await this.setPortStatus(storedType, portId, 'USED');
     await this.syncBoxOccupancyForTypes([{ type: storedType, entityId: portId }]);
     return connection;
-  }
-
-  private async extendDeviceFiberRange(cableId: string, deviceType: string, deviceId: string, number: number) {
-    const assignment = await this.prisma.cableConnection.findFirst({
-      where: { cableId, elementType: deviceType, elementId: deviceId, cable: { deletedAt: null } },
-    });
-    if (!assignment || (number >= assignment.fiberFrom && number <= assignment.fiberTo)) return;
-    await this.prisma.cableConnection.update({ where: { id: assignment.id }, data: {
-      fiberFrom: Math.min(assignment.fiberFrom, number), fiberTo: Math.max(assignment.fiberTo, number),
-    } });
   }
 
   private async syncBoxOccupancyForTypes(references: { type: string; entityId: string }[]) {
@@ -319,7 +175,7 @@ export class OpticalConnectionsService {
     const fiber = await this.prisma.fiber.findUnique({ where: { id: fiberId } });
     if (!fiber || fiber.deletedAt) throw new BadRequestException(`El hilo de ${side} no existe`);
     const covered = await this.prisma.cableConnection.findFirst({
-      where: { cableId: fiber.cableId, elementType: box.type, elementId: box.id, cable: { deletedAt: null } },
+      where: { cableId: fiber.cableId, elementType: box.type, elementId: box.id, fiberFrom: { lte: fiber.number }, fiberTo: { gte: fiber.number } },
     });
     if (covered) return fiber;
     const terminations = await this.prisma.opticalTermination.findMany({ where: { boxId: box.id }, select: { id: true } });
@@ -335,21 +191,10 @@ export class OpticalConnectionsService {
   }
 
   async create(dto: CreateOpticalConnectionDto) {
-    const box = await this.prisma.box.findUnique({ where: { id: dto.boxId }, select: { id: true, type: true, mangaType: true, deletedAt: true } });
+    const box = await this.prisma.box.findUnique({ where: { id: dto.boxId }, select: { id: true, type: true, deletedAt: true } });
     if (!box || box.deletedAt) throw new NotFoundException('Caja no encontrada');
-    const direct = dto.sourceType === FIBER_ENTITY || dto.targetType === FIBER_ENTITY;
-    if (direct) {
-      if (!isNormalManga(box.mangaType) || dto.sourceType !== FIBER_ENTITY || dto.targetType !== FIBER_ENTITY) throw new BadRequestException('Los empalmes directos requieren dos hilos en una manga normal, de paso o de empalme.');
-      if (dto.sourceId === dto.targetId) throw new BadRequestException('Selecciona dos hilos diferentes.');
-      dto.sourceFiberId = dto.sourceId;
-      dto.targetFiberId = dto.targetId;
-      const [a, b] = await Promise.all([this.assertFiberAtBox(dto.sourceId, box, 'entrada'), this.assertFiberAtBox(dto.targetId, box, 'salida')]);
-      if (a.cableId === b.cableId) throw new BadRequestException('Selecciona hilos de dos fibras distintas.');
-    } else if (isNormalManga(box.mangaType)) {
-      throw new BadRequestException('Esta manga no tiene puertos ni splitters: conecta dos hilos directamente.');
-    }
-    if (!direct && dto.sourceFiberId) await this.assertFiberAtBox(dto.sourceFiberId, box, 'origen');
-    if (!direct && dto.targetFiberId) await this.assertFiberAtBox(dto.targetFiberId, box, 'destino');
+    if (dto.sourceFiberId) await this.assertFiberAtBox(dto.sourceFiberId, box, 'origen');
+    if (dto.targetFiberId) await this.assertFiberAtBox(dto.targetFiberId, box, 'destino');
 
     const source = await this.resolveTermination(dto.sourceType, dto.sourceId, dto.boxId);
     const target = await this.resolveTermination(dto.targetType, dto.targetId, dto.boxId);
@@ -371,10 +216,6 @@ export class OpticalConnectionsService {
       include: CONNECTION_INCLUDE,
     });
 
-    for (const fiberId of new Set([dto.sourceFiberId, dto.targetFiberId].filter((id): id is string => !!id))) {
-      const fiber = await this.prisma.fiber.findUnique({ where: { id: fiberId } });
-      if (fiber) await this.extendDeviceFiberRange(fiber.cableId, box.type, box.id, fiber.number);
-    }
     await Promise.all([
       this.setPortStatus(dto.sourceType, dto.sourceId, 'USED'),
       this.setPortStatus(dto.targetType, dto.targetId, 'USED'),
@@ -385,6 +226,146 @@ export class OpticalConnectionsService {
     ]);
 
     return connection;
+  }
+
+  // Un mapeo de continuidad no es un puerto físico: registra directamente qué hilo que entra en la
+  // manga continúa por cuál hilo que sale. De esta manera una manga puede tener tantos mapeos como
+  // fibras, sin depender de su capacidad de puertos de empalme.
+  async createFiberSplice(dto: CreateFiberSpliceDto) {
+    if (dto.sourceFiberId === dto.targetFiberId) {
+      throw new BadRequestException('Un hilo no puede conectarse consigo mismo. Elige otro hilo de salida.');
+    }
+    const box = await this.prisma.box.findUnique({ where: { id: dto.deviceId }, select: { id: true, type: true, deletedAt: true } });
+    if (!box || box.deletedAt || box.type !== 'MANGA') throw new NotFoundException('Manga no encontrada');
+
+    await this.assertFiberAtBox(dto.sourceFiberId, box, 'entrada');
+    await this.assertFiberAtBox(dto.targetFiberId, box, 'salida');
+    // Un mismo hilo físico se ve una vez por cada lado de la manga. Por ello la entrada y la salida
+    // son extremos lógicos independientes: un azul de Entradas puede ir a verde, y el azul de
+    // Salidas todavía puede recibir otra entrada. Solo se prohíbe repetir el mismo extremo.
+    const [sourceUsed, targetUsed] = await Promise.all([
+      this.prisma.opticalConnection.findFirst({
+        where: {
+          deletedAt: null,
+          sourceTermination: { entityType: FIBER_ENTITY, boxId: dto.deviceId, entityId: dto.sourceFiberId },
+          targetTermination: { entityType: FIBER_ENTITY, boxId: dto.deviceId },
+        },
+        select: { id: true },
+      }),
+      this.prisma.opticalConnection.findFirst({
+        where: {
+          deletedAt: null,
+          sourceTermination: { entityType: FIBER_ENTITY, boxId: dto.deviceId },
+          targetTermination: { entityType: FIBER_ENTITY, boxId: dto.deviceId, entityId: dto.targetFiberId },
+        },
+        select: { id: true },
+      }),
+    ]);
+    if (sourceUsed) throw new ConflictException('Este hilo de entrada ya está conectado a una salida.');
+    if (targetUsed) throw new ConflictException('Este hilo de salida ya recibe una entrada.');
+
+    const fiberTermination = async (fiberId: string) => {
+      const existing = await this.prisma.opticalTermination.findFirst({ where: { entityType: FIBER_ENTITY, entityId: fiberId, boxId: dto.deviceId } });
+      return existing ?? this.prisma.opticalTermination.create({ data: { type: 'FIBER_END', entityType: FIBER_ENTITY, entityId: fiberId, boxId: dto.deviceId } });
+    };
+    const [source, target] = await Promise.all([fiberTermination(dto.sourceFiberId), fiberTermination(dto.targetFiberId)]);
+    return this.prisma.opticalConnection.create({
+      data: {
+        sourceTerminationId: source.id,
+        targetTerminationId: target.id,
+        sourceFiberId: dto.sourceFiberId,
+        targetFiberId: dto.targetFiberId,
+        connectionType: 'DIRECT',
+      },
+      include: CONNECTION_INCLUDE,
+    });
+  }
+
+  // La primera ruta alimenta la entrada del splitter; las posteriores solo ocupan una salida libre
+  // del mismo splitter. En todos los casos la salida queda orientada SPLITTER_OUTPUT → FIBER.
+  async createFiberSplitterRoute(dto: CreateFiberSplitterRouteDto) {
+    if (dto.sourceFiberId && dto.sourceFiberId === dto.targetFiberId) {
+      throw new BadRequestException('El hilo de entrada y el de salida deben ser distintos.');
+    }
+    const box = await this.prisma.box.findUnique({ where: { id: dto.deviceId }, select: { id: true, type: true, deletedAt: true } });
+    if (!box || box.deletedAt || box.type !== 'MANGA') throw new NotFoundException('Manga no encontrada');
+
+    if (dto.sourceFiberId) await this.assertFiberAtBox(dto.sourceFiberId, box, 'entrada');
+    await this.assertFiberAtBox(dto.targetFiberId, box, 'salida');
+
+    const [inputPort, outputPort] = await Promise.all([
+      this.prisma.splitterPort.findUnique({ where: { id: dto.splitterInputPortId }, include: { splitter: true } }),
+      this.prisma.splitterPort.findUnique({ where: { id: dto.splitterOutputPortId }, include: { splitter: true } }),
+    ]);
+    if (!inputPort || !outputPort || inputPort.splitter.deletedAt || outputPort.splitter.deletedAt ||
+      inputPort.splitter.boxId !== dto.deviceId || outputPort.splitter.boxId !== dto.deviceId ||
+      inputPort.splitterId !== outputPort.splitterId || inputPort.portType !== 'INPUT' || outputPort.portType !== 'OUTPUT') {
+      throw new BadRequestException('La entrada y la salida seleccionadas no pertenecen al mismo splitter de esta manga.');
+    }
+
+    const [targetUsed, inputConnection, outputUsed] = await Promise.all([
+      this.prisma.opticalConnection.findFirst({ where: { deletedAt: null, targetTermination: { entityType: FIBER_ENTITY, entityId: dto.targetFiberId, boxId: dto.deviceId } }, select: { id: true } }),
+      this.prisma.opticalConnection.findFirst({
+        where: { deletedAt: null, targetTermination: { entityType: 'SPLITTER_INPUT', entityId: inputPort.id, boxId: dto.deviceId } },
+        include: { sourceTermination: true },
+      }),
+      this.prisma.opticalConnection.findFirst({ where: { deletedAt: null, sourceTermination: { entityType: 'SPLITTER_OUTPUT', entityId: outputPort.id, boxId: dto.deviceId } }, select: { id: true } }),
+    ]);
+    if (targetUsed) throw new ConflictException('Este hilo de salida ya recibe una conexión dentro de la manga.');
+    if (outputUsed) throw new ConflictException(`La salida ${outputPort.number} del splitter ya tiene un hilo conectado.`);
+    if (dto.sourceFiberId) {
+      const sourceUsed = await this.prisma.opticalConnection.findFirst({
+        where: { deletedAt: null, sourceTermination: { entityType: FIBER_ENTITY, entityId: dto.sourceFiberId, boxId: dto.deviceId } },
+        select: { id: true },
+      });
+      if (sourceUsed) throw new ConflictException('Este hilo de entrada ya tiene una conexión dentro de la manga.');
+      if (inputConnection) throw new ConflictException('La entrada del splitter ya tiene un hilo conectado.');
+    } else if (!inputConnection || inputConnection.sourceTermination.entityType !== FIBER_ENTITY) {
+      throw new ConflictException('Primero conecta un hilo de entrada al splitter antes de usar otra salida.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const termination = async (entityType: string, entityId: string) => {
+        const existing = await tx.opticalTermination.findFirst({ where: { entityType, entityId, boxId: dto.deviceId } });
+        return existing ?? tx.opticalTermination.create({ data: { type: entityType === FIBER_ENTITY ? 'FIBER_END' : entityType, entityType, entityId, boxId: dto.deviceId } });
+      };
+      const [input, output, targetFiber] = await Promise.all([
+        termination('SPLITTER_INPUT', inputPort.id),
+        termination('SPLITTER_OUTPUT', outputPort.id),
+        termination(FIBER_ENTITY, dto.targetFiberId),
+      ]);
+      const createdInputConnection = dto.sourceFiberId
+        ? await (async () => {
+            const sourceFiber = await termination(FIBER_ENTITY, dto.sourceFiberId!);
+            return tx.opticalConnection.create({
+              data: { sourceTerminationId: sourceFiber.id, targetTerminationId: input.id, sourceFiberId: dto.sourceFiberId!, targetFiberId: dto.sourceFiberId!, connectionType: 'SPLICE' },
+              include: CONNECTION_INCLUDE,
+            });
+          })()
+        : null;
+      const outputConnection = await tx.opticalConnection.create({
+        data: { sourceTerminationId: output.id, targetTerminationId: targetFiber.id, sourceFiberId: dto.targetFiberId, targetFiberId: dto.targetFiberId, connectionType: 'SPLICE' },
+        include: CONNECTION_INCLUDE,
+      });
+      await tx.splitterPort.updateMany({
+        where: { id: { in: dto.sourceFiberId ? [inputPort.id, outputPort.id] : [outputPort.id] } },
+        data: { status: 'USED' },
+      });
+      return { inputConnection: createdInputConnection, outputConnection };
+    });
+  }
+
+  // Adaptador para instalaciones que aún llaman al endpoint de "mapeo normal". Una vez que una
+  // conexión se registra, la tabla y el motor de continuidad calculan el mapeo desde esa fuente.
+  async setNormalMapping(dto: unknown) {
+    return this.create(dto as CreateOpticalConnectionDto);
+  }
+
+  // La asignación de puertos ahora es dinámica: cada cable aparece en la tabla del dispositivo y
+  // el operador enlaza sus hilos al puerto físico correspondiente. Se conserva este método para
+  // compatibilidad con el servicio de cables de despliegues anteriores.
+  async assignCablePorts(cableId: string) {
+    return { cableId, assignedPorts: 0, mode: 'DYNAMIC' };
   }
 
   // Busca la terminación de un puerto de caja o de splitter, o la crea si es la primera vez que se

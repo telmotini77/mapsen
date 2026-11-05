@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { UpdateSplitterDto } from './dto/update-splitter.dto.js';
 import { CreateSplitterDto } from './dto/create-splitter.dto.js';
 import { OpticalConnectionsService } from '../optical-connections/optical-connections.service.js';
-import { MANGA_SPLITTER_RATIO, NAP_MAX_SPLITTER_OUTPUTS, splitterOutputs } from '../domain/network-rules.js';
+import { NAP_MAX_SPLITTER_OUTPUTS, splitterOutputs } from '../domain/network-rules.js';
 
 @Injectable()
 export class SplittersService {
@@ -47,10 +47,10 @@ export class SplittersService {
     };
   }
 
-  // Reglas de red: en una manga solo la de distribución lleva splitter (uno primario, 1:8); las
-  // demás mangas (paso y empalme) no dividen la señal. Una caja NAP suma como máximo 16 salidas:
-  // un 1:16, o uno o dos 1:8 (nunca un 1:16 con un 1:8). `ignoreSplitterId` excluye al splitter
-  // que se está modificando (al ampliarlo de 1:8 a 1:16).
+  // Una manga de distribución puede organizar varios splitters 1:8 o 1:16; cada uno recibe una
+  // fibra por su entrada y entrega sus propias salidas. Las mangas de paso/empalme no dividen la
+  // señal. Una caja NAP suma como máximo 16 salidas: un 1:16, o uno o dos 1:8. `ignoreSplitterId`
+  // excluye al splitter que se está modificando (al ampliarlo de 1:8 a 1:16).
   private async assertRatioAllowed(box: { id: string; type: string; mangaType: string | null }, ratio: string, ignoreSplitterId?: string) {
     const others = await this.prisma.splitter.findMany({
       where: { boxId: box.id, deletedAt: null, id: ignoreSplitterId ? { not: ignoreSplitterId } : undefined },
@@ -60,10 +60,6 @@ export class SplittersService {
       if (box.mangaType !== 'DISTRIBUCION') {
         throw new BadRequestException('Solo las mangas de distribución pueden tener splitters');
       }
-      if (ratio !== MANGA_SPLITTER_RATIO) {
-        throw new BadRequestException('Los splitters primarios de una manga de distribución son 1:8');
-      }
-      if (others.length > 0) throw new BadRequestException('La manga de distribución ya tiene su splitter primario 1:8.');
       return;
     }
     const used = others.reduce((sum, splitter) => sum + splitter.outputCount, 0);
@@ -96,14 +92,17 @@ export class SplittersService {
         projectId: box.projectId,
         boxId: box.id,
         code,
+        name: dto.name?.trim() || null,
         ratio: dto.ratio,
         splitterType: 'BALANCED',
         inputCount: 1,
         outputCount,
         ports: {
           create: [
-            { portType: 'INPUT', number: 1 },
-            ...Array.from({ length: outputCount }, (_, i) => ({ portType: 'OUTPUT', number: i + 1 })),
+            // Crear un splitter solo instala sus puertos libres; nunca crea conexiones ópticas ni
+            // asigna hilos. La entrada y cada salida se conectan explícitamente después.
+            { portType: 'INPUT', number: 1, status: 'FREE' },
+            ...Array.from({ length: outputCount }, (_, i) => ({ portType: 'OUTPUT', number: i + 1, status: 'FREE' })),
           ],
         },
       },

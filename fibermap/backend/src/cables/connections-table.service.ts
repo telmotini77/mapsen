@@ -1,4 +1,3 @@
-import { isNormalManga } from '../domain/network-rules.js';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -14,6 +13,7 @@ export interface ConnectionsTableFiber {
   color: string;
   status: string;
   service: string | null;
+  description: string | null;
   // Puerto lógico: 1, 2, 3... en el orden en que se listan los hilos de este dispositivo (no es
   // un OdfPort/BoxPort real, es la posición en la hoja de conexiones).
   port: number;
@@ -33,15 +33,25 @@ export interface DeviceTerminalFiber {
   linkId?: string;
 }
 
+// Unión interna de una manga: hilo de entrada → hilo de salida, sin requerir un puerto físico.
+export interface FiberContinuityMapping {
+  id: string;
+  inputFiberId: string;
+  outputFiberId: string;
+}
+
 // Un puerto del dispositivo: del ODF, de un splitter (entrada/salida) o de la caja (DROP).
 export interface DeviceTerminal {
   key: string;
   group: string;
   label: string;
   status: string;
+  splitter?: { id: string; code: string; name: string | null; ratio: string };
   fibers: DeviceTerminalFiber[];
   // Otros puertos con los que está fusionado dentro del dispositivo.
   peers: string[];
+  // Fusiones registradas que tocan este terminal, aun si no llevan un hilo asociado.
+  connectionIds: string[];
   // Otros dispositivos a los que llega el hilo de este puerto por su fibra (y en qué puerto entra allá,
   // si se registró).
   remote: RemoteEnd[];
@@ -101,8 +111,12 @@ export class ConnectionsTableService {
     elementType: 'ODF' | 'MANGA' | 'NAP',
     elementId: string,
     odfCapacity?: number | null,
-    showFullInventory = false,
-  ): Promise<{ portsInUse: number; cables: ConnectionsTableCable[]; terminals: DeviceTerminal[] }> {
+    // Compatible con la llamada de instalaciones que aún envían el indicador de mapeo normal.
+    // La tabla actual calcula su estado desde las conexiones registradas, por lo que no necesita
+    // una segunda estrategia de mapeo.
+    includeNormalMapping?: boolean,
+  ): Promise<{ portsInUse: number; cables: ConnectionsTableCable[]; terminals: DeviceTerminal[]; fiberMappings: FiberContinuityMapping[] }> {
+    void includeNormalMapping;
     // Manga / NAP: las fusiones del Editor de Conexiones dicen a qué puerto llega cada hilo.
     const boxSide = elementType === 'ODF' ? null : await this.boxTerminals(elementId);
 
@@ -130,7 +144,7 @@ export class ConnectionsTableService {
           number: tube.number,
           color: tube.color,
           fibers: tube.fibers
-            .filter((fiber) => showFullInventory || (fiber.number >= link.fiberFrom && fiber.number <= link.fiberTo))
+            .filter((fiber) => fiber.number >= link.fiberFrom && fiber.number <= link.fiberTo)
             .map((fiber) => ({
               id: fiber.id,
               number: fiber.number,
@@ -138,6 +152,7 @@ export class ConnectionsTableService {
               color: fiber.color,
               status: fiber.status,
               service: fiber.label,
+              description: fiber.description,
               port: nextPort++,
               links: boxSide ? (boxSide.linksByFiber.get(fiber.id) ?? []) : [],
             })),
@@ -161,7 +176,7 @@ export class ConnectionsTableService {
     const portsInUse = nextPort - 1;
     if (boxSide) {
       await this.attachRemote(elementType, elementId, cables, boxSide.terminals);
-      return { portsInUse: boxSide.terminals.filter((terminal) => terminal.fibers.length > 0).length, cables, terminals: boxSide.terminals };
+      return { portsInUse, cables, terminals: boxSide.terminals, fiberMappings: boxSide.fiberMappings };
     }
 
     // ODF: los enlaces hechos a mano (hilo → puerto) mandan; el resto de hilos llega por defecto al
@@ -189,6 +204,7 @@ export class ConnectionsTableService {
       status: 'FREE',
       fibers: [],
       peers: [],
+      connectionIds: [],
       remote: [],
     }));
     for (const cable of cables) {
@@ -196,17 +212,18 @@ export class ConnectionsTableService {
         for (const fiber of buffer.fibers) {
           const explicit = explicitPort.get(fiber.id);
           // Sin enlace propio, el hilo n queda en el puerto n mientras a ese puerto le quede un lado libre.
-          const port = explicit?.port ?? null;
+          const port = explicit?.port ?? ((explicitPerPort.get(fiber.port) ?? 0) < MAX_FIBERS_PER_PORT ? fiber.port : null);
           fiber.links = port ? [`Puerto ${port}`] : [];
           if (!port) continue;
           const terminal = terminals[port - 1];
           terminal.status = 'USED';
           terminal.fibers.push({ fiberId: fiber.id, cableId: cable.cableId, cableCode: cable.code, number: fiber.number, color: fiber.color, linkId: explicit?.linkId });
+          if (explicit?.linkId && !terminal.connectionIds.includes(explicit.linkId)) terminal.connectionIds.push(explicit.linkId);
         }
       }
     }
     await this.attachRemote(elementType, elementId, cables, terminals);
-    return { portsInUse: terminals.filter((terminal) => terminal.fibers.length > 0).length, cables, terminals };
+    return { portsInUse, cables, terminals, fiberMappings: [] };
   }
 
   // Completa `cable.devices` (a qué otros dispositivos llega cada fibra) y `terminal.remote` (a qué
@@ -324,34 +341,44 @@ export class ConnectionsTableService {
       }),
     ]);
 
-    const linkedEntities = new Set(connections.flatMap((c) => [c.sourceTermination.entityId, c.targetTermination.entityId]));
     const terminals: DeviceTerminal[] = [];
     const byKey = new Map<string, DeviceTerminal>();
     const add = (terminal: DeviceTerminal) => { terminals.push(terminal); byKey.set(terminal.key, terminal); };
-    for (const splitter of isNormalManga(box?.mangaType) ? [] : splitters) {
-      // INPUT va antes que OUTPUT por orden alfabético.
+    for (const splitter of splitters) {
+      // La entrada común y cada salida son extremos físicos distintos. Siempre se muestran:
+      // la entrada recibe la fibra alimentadora y las salidas continúan hacia otros cables o NAP.
       for (const port of splitter.ports) {
         const isInput = port.portType === 'INPUT';
-        // Un splitter 1:8 tiene 8 puertos (1:16, 16). El puerto común (antes "entrada") ya no se usa;
-        // solo se muestra si tiene conexiones de antes, para poder verlas y quitarlas.
-        if (isInput && !linkedEntities.has(port.id)) continue;
         add({
           key: `${isInput ? 'SPLITTER_INPUT' : 'SPLITTER_OUTPUT'}:${port.id}`,
           group: `Splitter ${splitter.code} (${splitter.ratio})`,
-          // Ningún puerto es solo de entrada o solo de salida: se numeran seguidos (el lado común del
-          // splitter es el 1, los del lado repartido van del 2 en adelante).
           label: `${splitter.code} · Puerto ${splitterPortNumber(port)}`,
           status: port.status,
+          splitter: { id: splitter.id, code: splitter.code, name: splitter.name, ratio: splitter.ratio },
           fibers: [],
           peers: [],
+          connectionIds: [],
           remote: [],
         });
       }
     }
-    for (const port of isNormalManga(box?.mangaType) ? [] : ports) {
-      add({ key: `BOX_PORT:${port.id}`, group: 'Puertos de la caja', label: boxPortLabel(port), status: port.status, fibers: [], peers: [], remote: [] });
+    for (const port of ports) {
+      add({ key: `BOX_PORT:${port.id}`, group: 'Puertos de la caja', label: boxPortLabel(port), status: port.status, fibers: [], peers: [], connectionIds: [], remote: [] });
     }
+    // Toda manga dispone además de posiciones de empalme directo, incluso si es de distribución y
+    // tiene splitter. Así una entrada puede continuar a una salida sin atravesar el splitter; este
+    // solo se usa cuando realmente se desea derivar la señal. Los puertos se crean al primer uso.
+    if (box?.type === 'MANGA') {
+      const existing = new Set(ports.map((port) => port.number));
+      for (let number = 1; number <= (box.capacity ?? 0); number++) {
+        if (existing.has(number)) continue;
+        add({ key: `BOX_PORT_NUMBER:${number}`, group: 'Puertos de empalme', label: `Puerto ${number}`, status: 'FREE', fibers: [], peers: [], connectionIds: [], remote: [] });
+      }
+      terminals.sort((a, b) => portNumberOf(a) - portNumberOf(b));
+    }
+
     const linksByFiber = new Map<string, string[]>();
+    const fiberMappings: FiberContinuityMapping[] = [];
     type Fiberish = { id: string; number: number; color: string; cable: { cableId: string; cable: { code: string } } } | null;
     const attach = (terminal: DeviceTerminal | undefined, fiber: Fiberish, linkId?: string) => {
       if (!terminal || !fiber) return;
@@ -363,41 +390,38 @@ export class ConnectionsTableService {
       linksByFiber.set(fiber.id, links);
     };
     for (const connection of connections) {
-      if (isNormalManga(box?.mangaType) && ['FIBER', 'FIBER_IN'].includes(connection.sourceTermination.entityType) && ['FIBER', 'FIBER_OUT'].includes(connection.targetTermination.entityType)) {
-        const a = connection.sourceFiber;
-        const b = connection.targetFiber;
-        if (a && b) {
-          // Agrupación de empalme para el seguimiento de continuidad, sin puerto físico.
-          const splice: DeviceTerminal = { key: `${connection.sourceTermination.entityType === 'FIBER_IN' ? 'MAPPING' : 'SPLICE'}:${connection.id}`, group: 'Empalmes', label: 'Empalme entre hilos', status: 'USED', fibers: [], peers: [], remote: [] };
-          attach(splice, a, connection.id);
-          if (a.id === b.id) {
-            splice.fibers.push({ ...splice.fibers[0] });
-          } else attach(splice, b, connection.id);
-          terminals.push(splice);
-          linksByFiber.set(a.id, [`${b.cable.cable.code} · hilo ${b.number}`]);
-          linksByFiber.set(b.id, [`${a.cable.cable.code} · hilo ${a.number}`]);
-        }
+      const isDirectFiberMapping =
+        connection.sourceTermination.entityType === 'FIBER' &&
+        connection.targetTermination.entityType === 'FIBER' &&
+        Boolean(connection.sourceFiberId) &&
+        Boolean(connection.targetFiberId);
+      if (isDirectFiberMapping) {
+        fiberMappings.push({ id: connection.id, inputFiberId: connection.sourceFiberId!, outputFiberId: connection.targetFiberId! });
         continue;
       }
       const source = byKey.get(`${connection.sourceTermination.entityType}:${connection.sourceTermination.entityId}`);
       const target = byKey.get(`${connection.targetTermination.entityType}:${connection.targetTermination.entityId}`);
-      attach(source, connection.sourceFiber);
-      // Enlace hilo → puerto (origen = extremo del hilo): se puede quitar desde la tabla.
-      const isFiberLink = connection.sourceTermination.entityType === 'FIBER';
-      attach(target, connection.targetFiber, isFiberLink ? connection.id : undefined);
+      // Cada enlace hilo ↔ puerto se elimina de manera independiente. Una salida de splitter usa la
+      // orientación contraria (SPLITTER_OUTPUT → FIBER), por lo que el `linkId` debe conservarse
+      // también en el extremo de origen.
+      const sourceIsFiber = connection.sourceTermination.entityType === 'FIBER';
+      const targetIsFiber = connection.targetTermination.entityType === 'FIBER';
+      attach(source, connection.sourceFiber, targetIsFiber ? connection.id : undefined);
+      attach(target, connection.targetFiber, sourceIsFiber ? connection.id : undefined);
+      if (source && !source.connectionIds.includes(connection.id)) source.connectionIds.push(connection.id);
+      if (target && !target.connectionIds.includes(connection.id)) target.connectionIds.push(connection.id);
       if (source && target) {
         source.peers.push(target.label);
         target.peers.push(source.label);
       }
     }
-    return { terminals, linksByFiber };
+    return { terminals, linksByFiber, fiberMappings };
   }
 }
 
-// Un splitter 1:8 tiene los puertos 1 a 8 (1:16, del 1 al 16), cada uno de entrada y salida. El
-// antiguo puerto común solo aparece si tiene conexiones de antes.
+// Un splitter tiene una entrada común y N salidas independientes (1:8 o 1:16).
 export function splitterPortNumber(port: { portType: string; number: number }) {
-  return port.portType === 'INPUT' ? `común ${port.number} (anterior)` : `${port.number}`;
+  return port.portType === 'INPUT' ? `entrada ${port.number}` : `salida ${port.number}`;
 }
 
 // Los puertos de empalme de una manga de paso/empalme no llevan tipo en el nombre; los DROP de una NAP sí.

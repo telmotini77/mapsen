@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsString } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { SPLITTER_RATIOS } from '../../domain/network-rules.js';
 
 export class CreateSplitterDto {
@@ -8,4 +8,9 @@ export class CreateSplitterDto {
 
   @IsIn(SPLITTER_RATIOS)
   ratio!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  name?: string;
 }
