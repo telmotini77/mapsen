@@ -22,9 +22,9 @@ export declare class OdfsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         capacity: number;
     }>;
     findAll(): import(".prisma/client").Prisma.PrismaPromise<{
@@ -36,9 +36,9 @@ export declare class OdfsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         capacity: number;
     }[]>;
     table(id: string): Promise<{
@@ -73,9 +73,9 @@ export declare class OdfsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         capacity: number;
     }>;
     update(id: string, dto: UpdateOdfDto): Promise<{
@@ -87,9 +87,9 @@ export declare class OdfsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         capacity: number;
     }>;
     remove(id: string): Promise<{
@@ -101,9 +101,9 @@ export declare class OdfsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         capacity: number;
     }>;
 }

@@ -76,9 +76,11 @@ interface TerminalOption {
 interface BoxEditorPageProps {
   initialBoxId?: string | null;
   onConsumeInitialBoxId?: () => void;
+  // Avisa qué caja quedó abierta, para volver a ella al regresar a esta sección.
+  onBoxOpened?: (id: string, kind: 'MANGA' | 'NAP') => void;
 }
 
-export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId }: BoxEditorPageProps) {
+export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId, onBoxOpened }: BoxEditorPageProps) {
   const [searching, setSearching] = useState(false);
   const [allBoxes, setAllBoxes] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -141,6 +143,7 @@ export default function BoxEditorPage({ initialBoxId, onConsumeInitialBoxId }: B
           ),
         ),
       );
+      onBoxOpened?.(boxData.id, boxData.type === 'NAP' ? 'NAP' : 'MANGA');
       setSearching(false);
       setSourceRef('');
       setTargetRef('');

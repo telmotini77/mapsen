@@ -1,10 +1,13 @@
+import { BoxSlacksService } from './box-slacks.service.js';
+import { CreateBoxSlackDto, UpdateBoxSlackDto } from './dto/box-slack.dto.js';
+import { Roles } from '../auth/decorators/roles.decorator.js';
 import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
 import { BoxesService } from './boxes.service.js';
 import { CreateBoxDto, UpdateBoxDto } from './dto/create-box.dto.js';
 
 @Controller('boxes')
 export class BoxesController {
-  constructor(private readonly boxesService: BoxesService) {}
+  constructor(private readonly boxesService: BoxesService, private readonly slacks: BoxSlacksService) {}
 
   @Post()
   create(@Body() createBoxDto: CreateBoxDto) {
@@ -15,6 +18,24 @@ export class BoxesController {
   findAll() {
     return this.boxesService.findAll();
   }
+
+  @Get('slacks')
+  mapSlacks() { return this.slacks.map(); }
+
+  @Get(':id/slacks')
+  listSlacks(@Param('id') id: string) { return this.slacks.list(id); }
+
+  @Roles('ADMIN', 'OPERATOR')
+  @Post(':id/slacks')
+  createSlack(@Param('id') id: string, @Body() dto: CreateBoxSlackDto) { return this.slacks.create(id, dto); }
+
+  @Roles('ADMIN', 'OPERATOR')
+  @Patch(':id/slacks/:slackId')
+  updateSlack(@Param('id') id: string, @Param('slackId') slackId: string, @Body() dto: UpdateBoxSlackDto) { return this.slacks.update(id, slackId, dto); }
+
+  @Roles('ADMIN', 'OPERATOR')
+  @Delete(':id/slacks/:slackId')
+  removeSlack(@Param('id') id: string, @Param('slackId') slackId: string) { return this.slacks.remove(id, slackId); }
 
   @Get(':id/table')
   table(@Param('id') id: string) {

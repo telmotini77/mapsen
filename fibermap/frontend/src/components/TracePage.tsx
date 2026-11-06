@@ -76,6 +76,8 @@ interface TracePageProps {
   initialBoxId?: string | null;
   initialDeviceKind?: string | null;
   onConsumeInitialBoxId?: () => void;
+  // Avisa qué dispositivo quedó abierto, para volver a él al regresar a esta sección.
+  onDeviceOpened?: (id: string, kind: OriginKind) => void;
 }
 
 // Traza de fibra: desde un ODF, una manga o una caja NAP hacia las cajas NAP a las que llega (una NAP
@@ -83,7 +85,7 @@ interface TracePageProps {
 // uno hacia una NAP (o hacia una manga) distinta; para elegir el destino no importa por cuál cable sale cada NAP, así que
 // primero se elige la caja NAP (entre todas las que el origen alcanza, sin importar el cable) y solo
 // después se resuelve o se elige el cable y el hilo concretos de esa conexión.
-export default function TracePage({ initialBoxId, initialDeviceKind, onConsumeInitialBoxId }: TracePageProps) {
+export default function TracePage({ initialBoxId, initialDeviceKind, onConsumeInitialBoxId, onDeviceOpened }: TracePageProps) {
   const [searching, setSearching] = useState(false);
   const [allOrigins, setAllOrigins] = useState<OriginOption[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -172,6 +174,7 @@ export default function TracePage({ initialBoxId, initialDeviceKind, onConsumeIn
       setSearching(false);
       resetSelection();
       loadLinks(table, id);
+      onDeviceOpened?.(device.id, kind);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo cargar el origen');
     } finally {

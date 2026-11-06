@@ -10,8 +10,6 @@ export declare class UsersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -20,6 +18,8 @@ export declare class UsersController {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }>;
     findAll(): import(".prisma/client").Prisma.PrismaPromise<{
         name: string;
@@ -27,8 +27,6 @@ export declare class UsersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -37,6 +35,8 @@ export declare class UsersController {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }[]>;
     findOne(id: string): Promise<{
         name: string;
@@ -44,8 +44,6 @@ export declare class UsersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -54,6 +52,8 @@ export declare class UsersController {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }>;
     update(id: string, updateUserDto: UpdateUserDto): Promise<{
         name: string;
@@ -61,8 +61,6 @@ export declare class UsersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -71,6 +69,8 @@ export declare class UsersController {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }>;
     remove(id: string): Promise<{
         name: string;
@@ -78,8 +78,6 @@ export declare class UsersController {
         id: string;
         createdAt: Date;
         updatedAt: Date;
-        email: string;
-        lastLogin: Date | null;
         roles: {
             name: string;
             id: string;
@@ -88,5 +86,7 @@ export declare class UsersController {
                 id: string;
             }[];
         }[];
+        email: string;
+        lastLogin: Date | null;
     }>;
 }

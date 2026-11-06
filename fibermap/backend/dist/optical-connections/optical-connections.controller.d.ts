@@ -47,9 +47,9 @@ export declare class OpticalConnectionsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
-        notes: string | null;
         connectionType: string;
         lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        notes: string | null;
         version: number;
         sourceTerminationId: string;
         targetTerminationId: string;
@@ -100,9 +100,9 @@ export declare class OpticalConnectionsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
-        notes: string | null;
         connectionType: string;
         lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        notes: string | null;
         version: number;
         sourceTerminationId: string;
         targetTerminationId: string;
@@ -118,9 +118,9 @@ export declare class OpticalConnectionsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
-        notes: string | null;
         connectionType: string;
         lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        notes: string | null;
         version: number;
         sourceTerminationId: string;
         targetTerminationId: string;
@@ -171,9 +171,9 @@ export declare class OpticalConnectionsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
-        notes: string | null;
         connectionType: string;
         lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        notes: string | null;
         version: number;
         sourceTerminationId: string;
         targetTerminationId: string;
@@ -227,9 +227,9 @@ export declare class OpticalConnectionsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
-        notes: string | null;
         connectionType: string;
         lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        notes: string | null;
         version: number;
         sourceTerminationId: string;
         targetTerminationId: string;
@@ -280,9 +280,9 @@ export declare class OpticalConnectionsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
-        notes: string | null;
         connectionType: string;
         lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        notes: string | null;
         version: number;
         sourceTerminationId: string;
         targetTerminationId: string;
@@ -298,9 +298,9 @@ export declare class OpticalConnectionsController {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
-        notes: string | null;
         connectionType: string;
         lossDb: import("@prisma/client/runtime/library").Decimal | null;
+        notes: string | null;
         version: number;
         sourceTerminationId: string;
         targetTerminationId: string;

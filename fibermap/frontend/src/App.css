@@ -502,3 +502,13 @@ body {
   background: rgba(251, 191, 36, 0.25);
   pointer-events: none;
 }
+
+.network-marker { padding: 0; }
+.network-marker.reserve-eligible { outline: 3px solid #fbbf24; outline-offset: 4px; box-shadow: 0 0 0 8px rgba(251, 191, 36, 0.22); }
+.network-marker.reserve-ineligible { opacity: 0.35; }
+.network-marker:focus-visible { outline: 3px solid white; outline-offset: 5px; }
+.reserve-guidance { display: flex; align-items: center; gap: 0.75rem; }
+.reserve-guidance .btn-secondary { flex-shrink: 0; }
+
+.reserve-guidance { top: 4.5rem; }
+@media (max-width: 860px) { .reserve-guidance { top: 8.5rem; } }

@@ -39,16 +39,16 @@ export declare class BoxesService {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         type: string;
-        manufacturerId: string | null;
-        installationType: string | null;
-        capacity: number | null;
         mangaType: string | null;
+        capacity: number | null;
         portCapacity: number;
         usedPorts: number;
+        installationType: string | null;
+        manufacturerId: string | null;
         equipmentModelId: string | null;
     }>;
     ensureSplitter(box: {
@@ -74,16 +74,16 @@ export declare class BoxesService {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         type: string;
-        manufacturerId: string | null;
-        installationType: string | null;
-        capacity: number | null;
         mangaType: string | null;
+        capacity: number | null;
         portCapacity: number;
         usedPorts: number;
+        installationType: string | null;
+        manufacturerId: string | null;
         equipmentModelId: string | null;
     })[]>;
     findOne(id: string): Promise<{
@@ -124,8 +124,8 @@ export declare class BoxesService {
             createdAt: Date;
             updatedAt: Date;
             deletedAt: Date | null;
-            notes: string | null;
             type: string;
+            notes: string | null;
             label: string | null;
             boxId: string;
             direction: string | null;
@@ -150,16 +150,16 @@ export declare class BoxesService {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         type: string;
-        manufacturerId: string | null;
-        installationType: string | null;
-        capacity: number | null;
         mangaType: string | null;
+        capacity: number | null;
         portCapacity: number;
         usedPorts: number;
+        installationType: string | null;
+        manufacturerId: string | null;
         equipmentModelId: string | null;
     }>;
     update(id: string, dto: UpdateBoxDto): Promise<{
@@ -171,16 +171,16 @@ export declare class BoxesService {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         type: string;
-        manufacturerId: string | null;
-        installationType: string | null;
-        capacity: number | null;
         mangaType: string | null;
+        capacity: number | null;
         portCapacity: number;
         usedPorts: number;
+        installationType: string | null;
+        manufacturerId: string | null;
         equipmentModelId: string | null;
     }>;
     remove(id: string): Promise<{
@@ -192,16 +192,16 @@ export declare class BoxesService {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         type: string;
-        manufacturerId: string | null;
-        installationType: string | null;
-        capacity: number | null;
         mangaType: string | null;
+        capacity: number | null;
         portCapacity: number;
         usedPorts: number;
+        installationType: string | null;
+        manufacturerId: string | null;
         equipmentModelId: string | null;
     }>;
     table(id: string): Promise<{
@@ -226,8 +226,8 @@ export declare class BoxesService {
             createdAt: Date;
             updatedAt: Date;
             deletedAt: Date | null;
-            notes: string | null;
             type: string;
+            notes: string | null;
             label: string | null;
             boxId: string;
             direction: string | null;
@@ -241,16 +241,16 @@ export declare class BoxesService {
         createdAt: Date;
         updatedAt: Date;
         deletedAt: Date | null;
+        projectId: string;
         latitude: import("@prisma/client/runtime/library").Decimal;
         longitude: import("@prisma/client/runtime/library").Decimal;
-        projectId: string;
         type: string;
-        manufacturerId: string | null;
-        installationType: string | null;
-        capacity: number | null;
         mangaType: string | null;
+        capacity: number | null;
         portCapacity: number;
         usedPorts: number;
+        installationType: string | null;
+        manufacturerId: string | null;
         equipmentModelId: string | null;
     }>;
 }

@@ -1,4 +1,4 @@
-import { MousePointer2, Box, Route, LayoutGrid, Cylinder } from 'lucide-react';
+import { MousePointer2, Box, Route, LayoutGrid, Cylinder, Infinity as InfinityIcon } from 'lucide-react';
 import './MapToolbar.css';
 
 interface MapToolbarProps {
@@ -12,6 +12,7 @@ const TOOLS = [
   { id: 'add-manga', icon: Cylinder, label: 'Agregar manga' },
   { id: 'add-nap', icon: Box, label: 'Agregar caja NAP' },
   { id: 'add-cable', icon: Route, label: 'Trazar fibra' },
+  { id: 'reserve', icon: InfinityIcon, label: 'Reserva' },
 ];
 
 export function MapToolbar({ activeTool, onToolSelect }: MapToolbarProps) {
