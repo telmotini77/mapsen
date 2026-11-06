@@ -273,6 +273,8 @@ export class CablesService {
     const { fibersPerTube, tubeCount } = tubeLayout(dto.fiberCount);
     const { path, connections } = await this.resolvePath(dto.points);
 
+    defaultFiberRanges(connections.map((c) => ({ kind: c.element.kind })), dto.fiberCount);
+
     const cable = await this.prisma.$transaction(async (tx) => {
       const created = await tx.cable.create({
         data: {
@@ -540,6 +542,14 @@ export class CablesService {
         const taken = await this.prisma.cable.findFirst({ where: { code: newCode, projectId: current.projectId, id: { not: id } } });
         if (taken) throw new ConflictException(`Ya existe una fibra con el nombre "${newCode}".`);
       }
+    }
+
+    if (resolved) {
+      const existing = await this.prisma.cableConnection.findMany({ where: { cableId: id } });
+      defaultFiberRanges([...resolved.connections].sort((a, b) => a.sequence - b.sequence).map((c) => ({
+        kind: c.element.kind,
+        existing: existing.find((row) => row.elementType === c.element.kind && row.elementId === c.element.id),
+      })), dto.fiberCount ?? current.fiberCount);
     }
 
     const updated = await this.prisma.cable.update({

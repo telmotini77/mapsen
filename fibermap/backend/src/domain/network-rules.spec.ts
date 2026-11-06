@@ -81,3 +81,22 @@ describe('hilos por defecto de cada dispositivo de una fibra', () => {
     ]);
   });
 });
+
+
+describe('capacidad de asignación de hilos', () => {
+  it('rechaza una NAP adicional cuando se agotan los hilos', () => {
+    expect(() => defaultFiberRanges([{ kind: 'MANGA' }, { kind: 'NAP' }, { kind: 'NAP' }, { kind: 'NAP' }], 2)).toThrow('No hay hilos disponibles');
+  });
+  it('rechaza continuar hacia una manga sin hilos libres', () => {
+    expect(() => defaultFiberRanges([{ kind: 'MANGA' }, { kind: 'NAP' }, { kind: 'NAP' }, { kind: 'MANGA' }], 2)).toThrow('No hay hilos disponibles');
+  });
+  it('rechaza rangos guardados fuera de capacidad sin recortarlos', () => {
+    expect(() => defaultFiberRanges([{ kind: 'NAP', existing: { fiberFrom: 1, fiberTo: 7 } }], 6)).toThrow('rango guardado');
+    expect(() => defaultFiberRanges([{ kind: 'NAP', existing: { fiberFrom: 0, fiberTo: 1 } }], 6)).toThrow('rango guardado');
+  });
+  it('conserva los hilos guardados al insertar una NAP antes de otra', () => {
+    expect(defaultFiberRanges([{ kind: 'MANGA' }, { kind: 'NAP' }, { kind: 'NAP', existing: { fiberFrom: 1, fiberTo: 1 } }], 6)).toEqual([
+      { fiberFrom: 1, fiberTo: 6 }, { fiberFrom: 2, fiberTo: 2 }, { fiberFrom: 1, fiberTo: 1 },
+    ]);
+  });
+});

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Map, { NavigationControl, ScaleControl, Marker, Source, Layer } from 'react-map-gl/maplibre';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { Layers, MapPin, Activity, Settings, GitPullRequest, Server, LogOut, Users, ChevronDown, ChevronUp, Menu, X, LayoutDashboard, Upload } from 'lucide-react';
+import { MapPin, Activity, Settings, Server, LogOut, Users, ChevronDown, ChevronUp, Menu, X, LayoutDashboard, Upload } from 'lucide-react';
 import { MapToolbar } from './components/MapToolbar';
 import { CreateNodeForm } from './components/CreateNodeForm';
 import { ElementPropertiesPanel } from './components/ElementPropertiesPanel';
@@ -150,8 +150,6 @@ function App() {
   const [editingElement, setEditingElement] = useState<NetworkElement | null>(null);
   const [preloadBoxId, setPreloadBoxId] = useState<string | null>(null);
   const [preloadKind, setPreloadKind] = useState<ElementKind | null>(null);
-  // Último dispositivo abierto en el Editor de Conexiones o en Trazabilidad, para volver a él.
-  const [workDevice, setWorkDevice] = useState<{ id: string; kind: ElementKind } | null>(null);
   const [elements, setElements] = useState<NetworkElement[]>([]);
   const [poles, setPoles] = useState<ImportedPole[]>([]);
   const [cables, setCables] = useState<FiberRecord[]>([]);
@@ -692,18 +690,6 @@ function App() {
   // On narrow screens the sidebar is an off-canvas drawer; picking a section should close
   // it automatically so the user immediately sees the content instead of an empty drawer.
   const handleSelectTab = (tab: string) => {
-    // El Editor de Conexiones y Trazabilidad se abren con el elemento elegido en el mapa o, si no hay
-    // ninguno, con el último que se usó en cualquiera de las dos secciones.
-    if (tab !== activeTab && (tab === 'box-editor' || tab === 'trace')) {
-      const fits = (kind: ElementKind) => tab === 'trace' || kind !== 'ODF';
-      const device = selectedElement && fits(selectedElement.kind)
-        ? { id: selectedElement.id, kind: selectedElement.kind }
-        : workDevice && fits(workDevice.kind) ? workDevice : null;
-      if (device) {
-        setPreloadBoxId(device.id);
-        setPreloadKind(device.kind);
-      }
-    }
     setActiveTab(tab);
     setSidebarOpen(false);
   };
@@ -783,22 +769,6 @@ function App() {
           >
             <Users className="nav-icon" aria-hidden="true" />
             <span>Clientes</span>
-          </button>
-          <button
-            className={`nav-item ${activeTab === 'box-editor' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('box-editor')}
-            aria-current={activeTab === 'box-editor' ? 'page' : undefined}
-          >
-            <GitPullRequest className="nav-icon" aria-hidden="true" />
-            <span>Editor de Conexiones</span>
-          </button>
-          <button
-            className={`nav-item ${activeTab === 'trace' ? 'active' : ''}`}
-            onClick={() => handleSelectTab('trace')}
-            aria-current={activeTab === 'trace' ? 'page' : undefined}
-          >
-            <Layers className="nav-icon" aria-hidden="true" />
-            <span>Trazabilidad</span>
           </button>
         </nav>
 
@@ -1271,20 +1241,11 @@ function App() {
         )}
 
         {activeTab === 'box-editor' && (
-          <BoxEditorPage
-            initialBoxId={preloadBoxId}
-            onConsumeInitialBoxId={() => { setPreloadBoxId(null); setPreloadKind(null); }}
-            onBoxOpened={(id, kind) => setWorkDevice({ id, kind })}
-          />
+          <BoxEditorPage initialBoxId={preloadBoxId} onConsumeInitialBoxId={() => setPreloadBoxId(null)} />
         )}
 
         {activeTab === 'trace' && (
-          <TracePage
-            initialBoxId={preloadBoxId}
-            initialDeviceKind={preloadKind}
-            onConsumeInitialBoxId={() => { setPreloadBoxId(null); setPreloadKind(null); }}
-            onDeviceOpened={(id, kind) => setWorkDevice({ id, kind })}
-          />
+          <TracePage initialBoxId={preloadBoxId} initialDeviceKind={preloadKind} onConsumeInitialBoxId={() => { setPreloadBoxId(null); setPreloadKind(null); }} />
         )}
 
         {activeTab === 'settings' && (
